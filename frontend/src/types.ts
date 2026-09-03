@@ -78,6 +78,8 @@ export const CV_STYLES: { value: CvStyle; label: string; hint: string }[] = [
 export interface AiStatus {
   configured: boolean
   model: string
+  /** True when the API wants the shared passphrase before it will call DeepSeek. */
+  authRequired: boolean
 }
 
 export interface TailoringRecommendation {

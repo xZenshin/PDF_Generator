@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, passphrase as passphraseStore } from '../api'
 import { toEditable } from '../cvFile'
 import type { AiStatus, Cv, PlannedChange, TailorResponse } from '../types'
 
@@ -17,13 +17,18 @@ interface TailorDialogProps {
 export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
   const [status, setStatus] = useState<AiStatus | null>(null)
   const [jobListing, setJobListing] = useState('')
+  const [secret, setSecret] = useState(() => passphraseStore.load())
+  const [remember, setRemember] = useState(() => passphraseStore.load() !== '')
   const [result, setResult] = useState<TailorResponse | null>(null)
   const [asking, setAsking] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.aiStatus().then(setStatus).catch(() => setStatus({ configured: false, model: 'unknown' }))
+    api
+      .aiStatus()
+      .then(setStatus)
+      .catch(() => setStatus({ configured: false, model: 'unknown', authRequired: false }))
   }, [])
 
   useEffect(() => {
@@ -39,7 +44,10 @@ export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
     setError(null)
     setResult(null)
     try {
-      setResult(await api.tailor(cv, jobListing))
+      setResult(await api.tailor(cv, jobListing, secret))
+      // Only ever kept once it is known to work.
+      if (remember) passphraseStore.remember(secret)
+      else passphraseStore.forget()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -52,7 +60,7 @@ export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
     setApplying(true)
     setError(null)
     try {
-      const { plan, cv: amended } = await api.applyTailoring(cv, result.recommendation)
+      const { plan, cv: amended } = await api.applyTailoring(cv, result.recommendation, secret)
       const included = plan.changes.filter((c) => c.include).length
       const excluded = plan.changes.length - included
       onApplied(
@@ -70,6 +78,8 @@ export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
   const included = plan?.changes.filter((c) => c.include) ?? []
   const excluded = plan?.changes.filter((c) => !c.include) ?? []
   const busy = asking || applying
+  // An empty passphrase is refused by the server anyway; don't spend a round trip on it.
+  const missingSecret = status?.authRequired === true && secret.trim() === ''
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -88,6 +98,32 @@ export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
           </p>
         )}
 
+        {status?.authRequired && (
+          <div className="auth-row">
+            <label className="field">
+              <span className="field-label">Passphrase</span>
+              <input
+                type="password"
+                value={secret}
+                autoComplete="current-password"
+                placeholder="The passphrase this API was started with"
+                onChange={(e) => setSecret(e.target.value)}
+              />
+            </label>
+            <label className="auth-remember">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => {
+                  setRemember(e.target.checked)
+                  if (!e.target.checked) passphraseStore.forget()
+                }}
+              />
+              remember in this browser
+            </label>
+          </div>
+        )}
+
         <label className="field">
           <span className="field-label">Job listing</span>
           <textarea
@@ -102,7 +138,7 @@ export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
           <button
             className="primary"
             onClick={() => void ask()}
-            disabled={busy || !jobListing.trim() || status?.configured === false}
+            disabled={busy || !jobListing.trim() || missingSecret || status?.configured === false}
           >
             {asking ? 'Asking DeepSeek…' : 'Ask DeepSeek'}
           </button>

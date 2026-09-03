@@ -15,7 +15,7 @@ public record TailorResponse(
 
 public record ApplyResponse(TailoringPlan Plan, CvSaveFile Cv);
 
-public record AiStatus(bool Configured, string Model);
+public record AiStatus(bool Configured, string Model, bool AuthRequired);
 
 public static class TailorEndpoints
 {
@@ -24,8 +24,9 @@ public static class TailorEndpoints
 
     public static void MapTailorEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/ai/status", (DeepSeekClient client) =>
-            Results.Ok(new AiStatus(client.IsConfigured, client.Model)));
+        // Open: it says whether a key and a passphrase are wanted, never what they are.
+        app.MapGet("/api/ai/status", (DeepSeekClient client, TailorAuthOptions auth) =>
+            Results.Ok(new AiStatus(client.IsConfigured, client.Model, auth.IsRequired)));
 
         var api = app.MapGroup("/api/cv");
 
@@ -57,7 +58,7 @@ public static class TailorEndpoints
                 // The user's problem to solve — a missing key, a rate limit, an odd reply.
                 return Results.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
             }
-        });
+        }).RequirePassphrase();
 
         // Applies a recommendation the user has seen and returns the amended CV for the
         // editor to adopt. Takes the lists rather than the plan, so the decisions are
@@ -72,7 +73,7 @@ public static class TailorEndpoints
             var plan = CvTailoring.Apply(cv, req.Recommendation);
             return Results.Json(
                 new ApplyResponse(plan, CvSaveFiles.ToSaveFile(cv)), SaveFileJson.Options);
-        });
+        }).RequirePassphrase();
     }
 
     /// <summary>

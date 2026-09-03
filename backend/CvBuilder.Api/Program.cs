@@ -17,6 +17,12 @@ var deepSeek = builder.Configuration.GetSection("DeepSeek").Get<DeepSeekOptions>
 builder.Services.AddSingleton(deepSeek);
 builder.Services.AddHttpClient<DeepSeekClient>(c => c.Timeout = TimeSpan.FromSeconds(120));
 
+// The tailoring endpoints are the only ones that cost money, so they are the only ones
+// behind a passphrase. Set it with Auth__Password; empty means no passphrase is asked
+// for, which is the sensible default on localhost.
+var auth = builder.Configuration.GetSection("Auth").Get<TailorAuthOptions>() ?? new TailorAuthOptions();
+builder.Services.AddSingleton(auth);
+
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     // SectionKind travels as "Timeline"/"Grouped"/… rather than 0/1/2.
