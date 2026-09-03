@@ -28,12 +28,15 @@ public record SavedCv(
     List<SavedSection> Sections);
 
 public record SavedSection(
+    string Id,
     string Title,
     SectionKind Kind,
     bool Included,
+    bool TwoColumns,
     List<SavedItem> Items);
 
 public record SavedItem(
+    string Id,
     string Title,
     string Organization,
     string Location,
@@ -42,7 +45,7 @@ public record SavedItem(
     bool Included,
     List<SavedBullet> Bullets);
 
-public record SavedBullet(string Text, bool Included);
+public record SavedBullet(string Id, string Text, bool Included);
 
 public static class CvSaveFiles
 {
@@ -60,12 +63,12 @@ public static class CvSaveFiles
             cv.Name, cv.FullName, cv.Headline, cv.Email, cv.Phone, cv.Location,
             cv.Website, cv.Summary, cv.Style,
             cv.Sections.OrderBy(s => s.SortOrder).Select(section => new SavedSection(
-                section.Title, section.Kind, section.Included,
+                section.Ref, section.Title, section.Kind, section.Included, section.TwoColumns,
                 section.Items.OrderBy(i => i.SortOrder).Select(item => new SavedItem(
-                    item.Title, item.Organization, item.Location, item.StartDate, item.EndDate,
-                    item.Included,
+                    item.Ref, item.Title, item.Organization, item.Location,
+                    item.StartDate, item.EndDate, item.Included,
                     item.Bullets.OrderBy(b => b.SortOrder)
-                        .Select(bullet => new SavedBullet(bullet.Text, bullet.Included))
+                        .Select(bullet => new SavedBullet(bullet.Ref, bullet.Text, bullet.Included))
                         .ToList()))
                     .ToList()))
                 .ToList()));
@@ -111,12 +114,15 @@ public static class CvSaveFiles
             Style = saved.Style,
             Sections = (saved.Sections ?? []).Select((section, sectionIndex) => new Section
             {
+                Ref = FieldText.Clamp(section.Id, 40),
                 Title = FieldText.Clamp(section.Title, 120, "Untitled section"),
                 Kind = section.Kind,
                 Included = section.Included,
+                TwoColumns = section.TwoColumns,
                 SortOrder = sectionIndex,
                 Items = (section.Items ?? []).Select((item, itemIndex) => new CvItem
                 {
+                    Ref = FieldText.Clamp(item.Id, 40),
                     Title = FieldText.Clamp(item.Title, 200),
                     Organization = FieldText.Clamp(item.Organization, 200),
                     Location = FieldText.Clamp(item.Location, 120),
@@ -126,6 +132,7 @@ public static class CvSaveFiles
                     SortOrder = itemIndex,
                     Bullets = (item.Bullets ?? []).Select((bullet, bulletIndex) => new Bullet
                     {
+                        Ref = FieldText.Clamp(bullet.Id, 40),
                         Text = FieldText.Clamp(bullet.Text, 1000),
                         Included = bullet.Included,
                         SortOrder = bulletIndex
@@ -133,6 +140,10 @@ public static class CvSaveFiles
                 }).ToList()
             }).ToList()
         };
+
+        // Ids in the file are kept so a model's reply about exp_003 still lands on the
+        // right bullet; anything missing (a hand-written file) gets one assigned here.
+        CvRefs.EnsureAll(cv);
 
         problem = null;
         return true;

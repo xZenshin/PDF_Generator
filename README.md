@@ -23,7 +23,7 @@ a PDF tailored to a specific application. Nothing is deleted when you exclude it
                                                             └────────────────┘
 ```
 
-Four deliberate choices, each to keep the project small:
+Five deliberate choices, each to keep the project small:
 
 **The PDF is rendered on the server, from the database.** The browser preview is a
 lookalike, not the source of truth — `Preview.tsx` and `CvPdfGenerator.cs` apply the same
@@ -42,6 +42,14 @@ tracking, rule weights, colour and spacing — nothing in it can move content ar
 is what keeps `Base` and `Mono` the same document. `CvPdfGenerator` holds the single
 arrangement and reads every visual value from the theme. Adding a third style means adding
 one more `CvTheme` and its CSS counterpart; it cannot accidentally become a second layout.
+
+**Refs are identifiers, not descriptions.** Every section, entry and bullet carries a
+`Ref` — `exp`, `exp_i01`, `exp_003` — assigned once when the row is created and never
+changed, not even when you rename the section it lives in. That is what makes them safe to
+put in a save file and safe for a model to quote back: `exp_003` still means the same
+bullet next month. Bullets are numbered across the whole section rather than per entry,
+so the ids read as a flat list of statements, which is how a model tends to reason about
+them.
 
 **There is no client-side state library.** `useCvEditor` holds the CV tree, applies every
 edit locally first so the preview is instant, and schedules the matching API call keyed
@@ -91,15 +99,62 @@ hand-edit:
   "format": "cvbuilder.cv",
   "version": 1,
   "exportedAt": "2026-09-03T11:39:23Z",
-  "cv": { "name": "Master CV", "style": "Mono", "sections": [ ... ] }
+  "cv": {
+    "name": "Master CV",
+    "style": "Mono",
+    "sections": [
+      {
+        "id": "skill",
+        "title": "Skills",
+        "kind": "Grouped",
+        "included": true,
+        "items": [
+          {
+            "id": "skill_i01",
+            "title": "Languages",
+            "included": true,
+            "bullets": [{ "id": "skill_001", "text": "C#", "included": true }]
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
-It carries no ids and no sort orders — order is array order, and import mints fresh rows.
-That is what lets one file be imported repeatedly, on any machine, without colliding with
-stored data. `format` and `version` are checked before anything is written, so picking the
-wrong file gets a readable message instead of a half-imported CV; files from older
-versions stay importable.
+Every id is the row's permanent `Ref`, so a file keeps its ids across export and import —
+which is what lets an LLM's reply about `skill_001` still land on the right bullet. Sort
+order is not stored: order is array order. `format` and `version` are checked before
+anything is written, so picking the wrong file gets a readable message instead of a
+half-imported CV; files from older versions stay importable, and a hand-written file with
+ids missing gets them assigned on import.
+
+### AI tailoring
+
+Paste a job listing, and DeepSeek is asked which parts of the CV belong in that
+application. It replies with ids only:
+
+```json
+{ "include": ["exp_001", "exp_007"], "exclude": ["exp_002", "exp_003"] }
+```
+
+The reply is never applied straight away. `CvTailoring` resolves it against the CV and
+returns what *would* change; you see the list and confirm. The same code then performs the
+write, so what you approved is what happens. Details worth knowing:
+
+- **Ids in neither list keep their current setting.** The model only has to state opinions
+  it holds.
+- **Including a bullet pulls its ancestors in.** A kept line inside an excluded entry
+  would still not print, so the entry and section come along, marked as such in the preview.
+  An ancestor the model excluded on purpose wins over that.
+- **An id in both lists is treated as excluded** and flagged, on the grounds that the
+  subtractive reading is the safer one.
+- **Ids that are not in the CV are ignored and reported** — that is what an invented id
+  looks like.
+- The prompt is the single constant in `Ai/TailoringPrompt.cs`. Nothing else depends on
+  its wording, only on the shape of the reply.
+- The API key stays server-side. The browser talks only to our own API, so the key is
+  never shipped to the client.
 
 ### API
 
@@ -122,6 +177,9 @@ managed through their own routes.
 | `PUT`    | `/sections/{id}/items/order` | Reorder entries |
 | `POST`   | `/items/{id}/bullets` · `PUT` `/bullets/{id}` · `DELETE` `/bullets/{id}` | Bullets |
 | `PUT`    | `/items/{id}/bullets/order` | Reorder bullets |
+| `GET`    | `/ai/status` | Whether a DeepSeek key is configured, and which model |
+| `POST`   | `/cvs/{id}/tailor` | Ask the model what to include; returns the proposed changes |
+| `POST`   | `/cvs/{id}/tailor/apply` | Apply a recommendation the user confirmed |
 
 Reorder requests take `{ "ids": [...] }`. Ids the client did not mention keep their
 relative order and are appended after the listed ones, so a stale tab cannot scramble the
@@ -154,6 +212,8 @@ starter CV so the editor is never a blank page.
 | ------- | ----- | ------- |
 | Connection string | `ConnectionStrings__Default` env var, or `appsettings.json` | `Host=localhost;Port=5432;Database=cvbuilder;Username=cvbuilder;Password=cvbuilder` |
 | API URL for the dev proxy | `VITE_API_TARGET` env var | `http://localhost:5199` |
+| DeepSeek API key | `DeepSeek__ApiKey` env var | *(none — tailoring is disabled without it)* |
+| DeepSeek model | `DeepSeek__Model` env var, or `appsettings.json` | `deepseek-chat` |
 
 The frontend only ever calls `/api` on its own origin; Vite proxies that in development.
 CORS is enabled for `localhost:5173` **in development only**.
@@ -197,6 +257,11 @@ backend/CvBuilder.Api/
   Api/Contracts.cs          DTOs and mapping
   Api/CvEndpoints.cs        All routes
   Api/CvSaveFile.cs         Save-file format, validation and import mapping
+  Api/TailorEndpoints.cs    Tailoring routes
+  Domain/CvRefs.cs          Stable exp_003-style handles
+  Ai/TailoringPrompt.cs     THE PROMPT — replace with your own
+  Ai/DeepSeekClient.cs      Chat call, key handling, error messages
+  Ai/CvTailoring.cs         Reply -> planned toggle changes -> write
   Pdf/CvTheme.cs            Typography per style (Base, Mono)
   Pdf/CvPdfGenerator.cs     Inclusion filtering + A4 layout
 frontend/src/
@@ -204,4 +269,5 @@ frontend/src/
   useCvEditor.ts            CV state, optimistic edits, debounced saves, flush()
   components/Editor.tsx     Left pane
   components/Preview.tsx    Right pane — mirrors CvPdfGenerator
+  components/TailorDialog.tsx  Job listing in, proposed changes out
 ```

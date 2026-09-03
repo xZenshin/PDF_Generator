@@ -39,6 +39,7 @@ public static class CvEndpoints
             // A brand new CV starts from a template so the editor is never a blank page.
             var cv = Templates.NewStarterCv();
             if (req is not null) ApplyHeader(cv, req);
+            CvRefs.EnsureAll(cv);
 
             db.Cvs.Add(cv);
             await db.SaveChangesAsync();
@@ -119,12 +120,15 @@ public static class CvEndpoints
             var cv = await db.Cvs.Include(c => c.Sections).FirstOrDefaultAsync(c => c.Id == id);
             if (cv is null) return Results.NotFound();
 
+            var title = Text(req.Title, 120, "New section");
             var section = new Section
             {
                 CvId = cv.Id,
-                Title = Text(req.Title, 120, "New section"),
+                Ref = CvRefs.SectionRef(title, cv.Sections.Select(s => s.Ref)),
+                Title = title,
                 Kind = req.Kind,
                 Included = req.Included,
+                TwoColumns = req.TwoColumns,
                 SortOrder = NextOrder(cv.Sections.Select(s => s.SortOrder))
             };
             db.Sections.Add(section);
@@ -155,6 +159,7 @@ public static class CvEndpoints
             section.Title = Text(req.Title, 120, "Untitled section");
             section.Kind = req.Kind;
             section.Included = req.Included;
+            section.TwoColumns = req.TwoColumns;
             await Touch(db, section.Cv);
             return Results.NoContent();
         });
@@ -180,6 +185,7 @@ public static class CvEndpoints
             var item = new CvItem
             {
                 SectionId = section.Id,
+                Ref = CvRefs.ItemRef(section.Ref, section.Items.Select(i => i.Ref)),
                 Title = Text(req.Title, 200),
                 Organization = Text(req.Organization, 200),
                 Location = Text(req.Location, 120),
@@ -248,9 +254,17 @@ public static class CvEndpoints
                 .FirstOrDefaultAsync(i => i.Id == id);
             if (item is null) return Results.NotFound();
 
+            // Bullet refs run across the whole section, so the siblings under other
+            // entries in this section count towards the next number.
+            var sectionBulletRefs = await db.Bullets
+                .Where(b => b.Item!.SectionId == item.SectionId)
+                .Select(b => b.Ref)
+                .ToListAsync();
+
             var bullet = new Bullet
             {
                 ItemId = item.Id,
+                Ref = CvRefs.BulletRef(item.Section!.Ref, sectionBulletRefs),
                 Text = Text(req.Text, 1000),
                 Included = req.Included,
                 SortOrder = NextOrder(item.Bullets.Select(b => b.SortOrder))
@@ -306,11 +320,7 @@ public static class CvEndpoints
 
     // ---- Helpers ----------------------------------------------------------
 
-    private static Task<Cv?> LoadFull(CvDbContext db, Guid id) =>
-        db.Cvs
-            .Include(c => c.Sections).ThenInclude(s => s.Items).ThenInclude(i => i.Bullets)
-            .AsSplitQuery()
-            .FirstOrDefaultAsync(c => c.Id == id);
+    private static Task<Cv?> LoadFull(CvDbContext db, Guid id) => db.LoadFull(id);
 
     private static void ApplyHeader(Cv cv, CvHeaderRequest req)
     {

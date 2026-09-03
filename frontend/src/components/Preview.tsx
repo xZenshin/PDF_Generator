@@ -1,4 +1,4 @@
-import type { Cv, Item, Section } from '../types'
+import type { Bullet, Cv, Item, Section } from '../types'
 
 /**
  * Mirrors CvPdfGenerator on the server: same inclusion rules, same ordering,
@@ -26,15 +26,38 @@ export function Preview({ cv }: { cv: Cv }) {
       {sections.map(({ section, items }) => (
         <section key={section.id} className="paper-section">
           <h2>{section.title}</h2>
-          {items.map((item) => (
-            <PreviewItem key={item.id} section={section} item={item} />
-          ))}
+          {section.kind === 'Bullets' && section.twoColumns ? (
+            <TwoColumnBullets bullets={items.flatMap(visibleBullets)} />
+          ) : (
+            items.map((item) => <PreviewItem key={item.id} section={section} item={item} />)
+          )}
         </section>
       ))}
 
       {sections.length === 0 && !cv.summary && (
         <p className="empty">Nothing is included yet — tick "In PDF" on the entries you want.</p>
       )}
+    </div>
+  )
+}
+
+/**
+ * The section's bullets split the same way CvPdfGenerator splits them: left column
+ * first, odd one out on the left. Two explicit lists rather than CSS `columns`, which
+ * balances by height and would drift from the PDF whenever a bullet wraps.
+ */
+function TwoColumnBullets({ bullets }: { bullets: Bullet[] }) {
+  const leftCount = Math.ceil(bullets.length / 2)
+
+  return (
+    <div className="bullet-columns">
+      {[bullets.slice(0, leftCount), bullets.slice(leftCount)].map((column, index) => (
+        <ul key={index} className="paper-bullets">
+          {column.map((bullet) => (
+            <li key={bullet.id}>{bullet.text}</li>
+          ))}
+        </ul>
+      ))}
     </div>
   )
 }

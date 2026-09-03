@@ -1,4 +1,15 @@
-import type { Bullet, Cv, CvSummary, Item, Section, SectionKind } from './types'
+import type {
+  AiStatus,
+  Bullet,
+  Cv,
+  CvSummary,
+  Item,
+  Section,
+  SectionKind,
+  TailorResponse,
+  TailoringPlan,
+  TailoringRecommendation,
+} from './types'
 
 const BASE = '/api'
 
@@ -22,7 +33,7 @@ export type CvHeader = Pick<
   Cv,
   'name' | 'fullName' | 'headline' | 'email' | 'phone' | 'location' | 'website' | 'summary' | 'style'
 >
-export type SectionBody = Pick<Section, 'title' | 'kind' | 'included'>
+export type SectionBody = Pick<Section, 'title' | 'kind' | 'included' | 'twoColumns'>
 export type ItemBody = Pick<
   Item,
   'title' | 'organization' | 'location' | 'startDate' | 'endDate' | 'included'
@@ -40,7 +51,7 @@ export const api = {
   addSection: (cvId: string, kind: SectionKind, title: string) =>
     request<Section>(`/cvs/${cvId}/sections`, {
       method: 'POST',
-      body: body({ title, kind, included: true } satisfies SectionBody),
+      body: body({ title, kind, included: true, twoColumns: false } satisfies SectionBody),
     }),
   updateSection: (id: string, b: SectionBody) =>
     request<void>(`/sections/${id}`, { method: 'PUT', body: body(b) }),
@@ -64,6 +75,32 @@ export const api = {
   reorderBullets: (itemId: string, ids: string[]) =>
     request<void>(`/items/${itemId}/bullets/order`, { method: 'PUT', body: body({ ids }) }),
 
+  // ---- AI tailoring ---------------------------------------------------
+
+  aiStatus: () => request<AiStatus>('/ai/status'),
+
+  /** Asks the model what to include. Writes nothing — returns the proposed changes. */
+  tailor: async (cvId: string, jobListing: string) => {
+    const res = await fetch(`${BASE}/cvs/${cvId}/tailor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body({ jobListing }),
+    })
+    if (!res.ok) throw new Error(await problemText(res))
+    return (await res.json()) as TailorResponse
+  },
+
+  /** Applies a recommendation the user has confirmed. */
+  applyTailoring: async (cvId: string, recommendation: TailoringRecommendation) => {
+    const res = await fetch(`${BASE}/cvs/${cvId}/tailor/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body(recommendation),
+    })
+    if (!res.ok) throw new Error(await problemText(res))
+    return (await res.json()) as { plan: TailoringPlan; cv: Cv }
+  },
+
   pdfUrl: (id: string) => `${BASE}/cvs/${id}/pdf`,
   exportUrl: (id: string) => `${BASE}/cvs/${id}/export`,
 
@@ -84,8 +121,8 @@ async function problemText(res: Response): Promise<string> {
   const raw = await res.text().catch(() => '')
   try {
     const problem = JSON.parse(raw) as { detail?: string; title?: string }
-    return problem.detail ?? problem.title ?? `Import failed (${res.status})`
+    return problem.detail ?? problem.title ?? `Request failed (${res.status})`
   } catch {
-    return raw || `Import failed (${res.status})`
+    return raw || `Request failed (${res.status})`
   }
 }

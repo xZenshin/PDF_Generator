@@ -110,6 +110,18 @@ function SectionCard({ section, actions, canUp, canDown }: SectionCardProps) {
             </option>
           ))}
         </select>
+        {section.kind === 'Bullets' && (
+          <label className="include" title="Run this section's bullets in two columns">
+            <input
+              type="checkbox"
+              checked={section.twoColumns}
+              onChange={(e) =>
+                actions.updateSection(section.id, { twoColumns: e.target.checked }, true)
+              }
+            />
+            <span>2 cols</span>
+          </label>
+        )}
         <IncludeToggle
           checked={section.included}
           onChange={(included) => actions.updateSection(section.id, { included }, true)}

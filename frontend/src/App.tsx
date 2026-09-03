@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { Editor } from './components/Editor'
 import { Preview } from './components/Preview'
+import { TailorDialog } from './components/TailorDialog'
 import { useCvEditor } from './useCvEditor'
 import { CV_STYLES, type Cv, type CvSummary } from './types'
 
@@ -12,8 +13,10 @@ export default function App() {
   const [cvId, setCvId] = useState<string | null>(() => localStorage.getItem(LAST_CV_KEY))
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [tailoring, setTailoring] = useState(false)
 
-  const { cv, loading, status, error, dismissError, flush, actions } = useCvEditor(cvId)
+  const { cv, loading, status, error, dismissError, flush, reload, actions } = useCvEditor(cvId)
 
   const selectCv = useCallback((id: string | null) => {
     setCvId(id)
@@ -183,6 +186,14 @@ export default function App() {
           }}
         />
 
+        <button
+          onClick={() => setTailoring(true)}
+          disabled={busy || !cv}
+          title="Ask DeepSeek which parts of this CV fit a job listing"
+        >
+          Tailor…
+        </button>
+
         {cv && (
           <div className="segmented" role="group" aria-label="CV style">
             {CV_STYLES.map((option) => (
@@ -218,6 +229,28 @@ export default function App() {
             ✕
           </button>
         </div>
+      )}
+
+      {notice && (
+        <div className="banner good">
+          <span>{notice}</span>
+          <button className="icon" onClick={() => setNotice(null)}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {tailoring && cv && (
+        <TailorDialog
+          cvId={cv.id}
+          cvName={cv.name}
+          onClose={() => setTailoring(false)}
+          onApplied={(summary) => {
+            setTailoring(false)
+            setNotice(summary)
+            void reload()
+          }}
+        />
       )}
 
       <main className="panes">

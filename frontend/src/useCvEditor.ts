@@ -355,6 +355,7 @@ const bodyOfSection = (s: Section): SectionBody => ({
   title: s.title,
   kind: s.kind,
   included: s.included,
+  twoColumns: s.twoColumns,
 })
 
 const bodyOfItem = (i: Item): ItemBody => ({

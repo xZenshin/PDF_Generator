@@ -31,8 +31,10 @@ public class CvDbContext(DbContextOptions<CvDbContext> options) : DbContext(opti
 
         b.Entity<Section>(e =>
         {
+            e.Property(x => x.Ref).HasMaxLength(40);
             e.Property(x => x.Title).HasMaxLength(120);
             e.HasIndex(x => new { x.CvId, x.SortOrder });
+            e.HasIndex(x => new { x.CvId, x.Ref });
 
             e.HasMany(x => x.Items)
                 .WithOne(x => x.Section!)
@@ -42,6 +44,7 @@ public class CvDbContext(DbContextOptions<CvDbContext> options) : DbContext(opti
 
         b.Entity<CvItem>(e =>
         {
+            e.Property(x => x.Ref).HasMaxLength(40);
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Organization).HasMaxLength(200);
             e.Property(x => x.Location).HasMaxLength(120);
@@ -57,6 +60,7 @@ public class CvDbContext(DbContextOptions<CvDbContext> options) : DbContext(opti
 
         b.Entity<Bullet>(e =>
         {
+            e.Property(x => x.Ref).HasMaxLength(40);
             e.Property(x => x.Text).HasMaxLength(1000);
             e.HasIndex(x => new { x.ItemId, x.SortOrder });
         });

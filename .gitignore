@@ -2,6 +2,7 @@
 bin/
 obj/
 *.user
+Migrations/
 
 # Node
 node_modules/

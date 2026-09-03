@@ -22,14 +22,17 @@ public record CvDto(
 
 public record SectionDto(
     Guid Id,
+    string Ref,
     string Title,
     SectionKind Kind,
     int SortOrder,
     bool Included,
+    bool TwoColumns,
     IReadOnlyList<ItemDto> Items);
 
 public record ItemDto(
     Guid Id,
+    string Ref,
     string Title,
     string Organization,
     string Location,
@@ -39,7 +42,7 @@ public record ItemDto(
     bool Included,
     IReadOnlyList<BulletDto> Bullets);
 
-public record BulletDto(Guid Id, string Text, int SortOrder, bool Included);
+public record BulletDto(Guid Id, string Ref, string Text, int SortOrder, bool Included);
 
 // ---- Write models ---------------------------------------------------------
 
@@ -54,7 +57,7 @@ public record CvHeaderRequest(
     string Summary,
     CvStyle Style);
 
-public record SectionRequest(string Title, SectionKind Kind, bool Included);
+public record SectionRequest(string Title, SectionKind Kind, bool Included, bool TwoColumns);
 
 public record ItemRequest(
     string Title,
@@ -81,14 +84,15 @@ public static class Mapper
         cv.Sections.OrderBy(s => s.SortOrder).Select(ToDto).ToList());
 
     public static SectionDto ToDto(Section s) => new(
-        s.Id, s.Title, s.Kind, s.SortOrder, s.Included,
+        s.Id, s.Ref, s.Title, s.Kind, s.SortOrder, s.Included, s.TwoColumns,
         s.Items.OrderBy(i => i.SortOrder).Select(ToDto).ToList());
 
     public static ItemDto ToDto(CvItem i) => new(
-        i.Id, i.Title, i.Organization, i.Location, i.StartDate, i.EndDate, i.SortOrder, i.Included,
+        i.Id, i.Ref, i.Title, i.Organization, i.Location, i.StartDate, i.EndDate,
+        i.SortOrder, i.Included,
         i.Bullets.OrderBy(b => b.SortOrder).Select(ToDto).ToList());
 
-    public static BulletDto ToDto(Bullet b) => new(b.Id, b.Text, b.SortOrder, b.Included);
+    public static BulletDto ToDto(Bullet b) => new(b.Id, b.Ref, b.Text, b.SortOrder, b.Included);
 }
 
 /// <summary>

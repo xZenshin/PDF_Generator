@@ -90,6 +90,15 @@ public static class CvPdfGenerator
                     .LineHorizontal(theme.SectionRuleWeight).LineColor(theme.RuleColor);
             });
 
+            // Two columns is a property of the section, not of any one entry: every
+            // bullet in it becomes one list that spans both columns.
+            if (section.Kind == SectionKind.Bullets && section.TwoColumns)
+            {
+                var all = VisibleItems(section).SelectMany(VisibleBullets).ToList();
+                if (all.Count > 0) block.Item().Element(c => ComposeTwoColumnBullets(c, all, theme));
+                return;
+            }
+
             foreach (var item in VisibleItems(section))
             {
                 switch (section.Kind)
@@ -178,6 +187,27 @@ public static class CvPdfGenerator
             prose.Spacing(6);
             foreach (var paragraph in paragraphs)
                 prose.Item().Text(paragraph.Text).Justify();
+        });
+    }
+
+    /// <summary>
+    /// The same bullet list, filling the left column before the right so it reads
+    /// top-to-bottom per column. An odd count leaves the extra bullet on the left.
+    /// </summary>
+    private static void ComposeTwoColumnBullets(IContainer container, List<Bullet> bullets, CvTheme theme)
+    {
+        var leftCount = (bullets.Count + 1) / 2;
+        var left = bullets.Take(leftCount).ToList();
+        var right = bullets.Skip(leftCount).ToList();
+
+        container.Row(row =>
+        {
+            row.Spacing(18);
+            row.RelativeItem().Element(c => ComposeBullets(c, left, theme));
+            row.RelativeItem().Element(c =>
+            {
+                if (right.Count > 0) ComposeBullets(c, right, theme);
+            });
         });
     }
 
