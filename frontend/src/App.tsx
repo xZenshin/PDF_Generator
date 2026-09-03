@@ -3,7 +3,7 @@ import { api } from './api'
 import { Editor } from './components/Editor'
 import { Preview } from './components/Preview'
 import { useCvEditor } from './useCvEditor'
-import { CV_STYLES, type CvSummary } from './types'
+import { CV_STYLES, type Cv, type CvSummary } from './types'
 
 const LAST_CV_KEY = 'cvbuilder.lastCvId'
 
@@ -21,6 +21,8 @@ export default function App() {
     else localStorage.removeItem(LAST_CV_KEY)
   }, [])
 
+  const saveFileInput = useRef<HTMLInputElement>(null)
+
   // Load the list once, and make sure something is selected. The guard keeps
   // StrictMode's double-invoke from creating two CVs on a fresh database.
   const initialised = useRef(false)
@@ -36,7 +38,7 @@ export default function App() {
         if (list.length === 0) {
           const created = await api.createCv()
           if (cancelled) return
-          setCvs([{ id: created.id, name: created.name, fullName: created.fullName, updatedAt: created.updatedAt }])
+          setCvs([summaryOf(created)])
           selectCv(created.id)
           return
         }
@@ -66,10 +68,7 @@ export default function App() {
     try {
       await flush()
       const created = await api.createCv()
-      setCvs((list) => [
-        { id: created.id, name: created.name, fullName: created.fullName, updatedAt: created.updatedAt },
-        ...list,
-      ])
+      setCvs((list) => [summaryOf(created), ...list])
       selectCv(created.id)
     } catch (err) {
       setProblem(err instanceof Error ? err.message : String(err))
@@ -97,19 +96,36 @@ export default function App() {
     if (!cvId) return
     setBusy(true)
     try {
-      // The PDF is rendered from stored data, so pending edits must land first.
+      // Both exports are rendered from stored data, so pending edits must land first.
       await flush()
-      const res = await fetch(api.pdfUrl(cvId))
-      if (!res.ok) throw new Error(`PDF export failed (${res.status})`)
+      await saveBlob(api.pdfUrl(cvId), `${slug(cv?.fullName || cv?.name || 'my')}-cv.pdf`)
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
-      const url = URL.createObjectURL(await res.blob())
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${slug(cv?.fullName || cv?.name || 'my')}-cv.pdf`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
+  const saveToFile = async () => {
+    if (!cvId) return
+    setBusy(true)
+    try {
+      await flush()
+      await saveBlob(api.exportUrl(cvId), `${slug(cv?.name || cv?.fullName || 'my')}.cvjson`)
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const openSaveFile = async (file: File) => {
+    setBusy(true)
+    try {
+      await flush()
+      const imported = await api.importCv(await file.text())
+      setCvs((list) => [summaryOf(imported), ...list])
+      selectCv(imported.id)
     } catch (err) {
       setProblem(err instanceof Error ? err.message : String(err))
     } finally {
@@ -139,6 +155,33 @@ export default function App() {
         <button onClick={() => void deleteCv()} disabled={busy || !cvId}>
           Delete
         </button>
+
+        <button
+          onClick={() => void saveToFile()}
+          disabled={busy || !cv}
+          title="Download this CV as a save file you can import later"
+        >
+          Save to file
+        </button>
+        <button
+          onClick={() => saveFileInput.current?.click()}
+          disabled={busy}
+          title="Import a save file as a new CV"
+        >
+          Open file
+        </button>
+        <input
+          ref={saveFileInput}
+          type="file"
+          accept=".cvjson,.json,application/json"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            // Cleared so picking the same file twice still fires a change.
+            e.target.value = ''
+            if (file) void openSaveFile(file)
+          }}
+        />
 
         {cv && (
           <div className="segmented" role="group" aria-label="CV style">
@@ -186,6 +229,28 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+const summaryOf = (cv: Cv): CvSummary => ({
+  id: cv.id,
+  name: cv.name,
+  fullName: cv.fullName,
+  updatedAt: cv.updatedAt,
+})
+
+/** Fetches a URL and hands the bytes to the browser as a download. */
+async function saveBlob(url: string, filename: string) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Export failed (${res.status})`)
+
+  const href = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = href
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(href)
 }
 
 const statusText = (status: string) =>

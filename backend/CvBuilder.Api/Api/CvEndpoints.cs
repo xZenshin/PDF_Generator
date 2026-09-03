@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CvBuilder.Api.Data;
 using CvBuilder.Api.Domain;
 using CvBuilder.Api.Pdf;
@@ -72,6 +73,45 @@ public static class CvEndpoints
             var bytes = CvPdfGenerator.Render(cv);
             var fileName = Slug(string.IsNullOrWhiteSpace(cv.FullName) ? cv.Name : cv.FullName) + "-cv.pdf";
             return Results.File(bytes, "application/pdf", fileName);
+        });
+
+        // ---- Save files ---------------------------------------------------
+
+        api.MapGet("/cvs/{id:guid}/export", async (Guid id, CvDbContext db) =>
+        {
+            var cv = await LoadFull(db, id);
+            if (cv is null) return Results.NotFound();
+
+            // Written indented so the file stays readable and hand-editable.
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(
+                CvSaveFiles.ToSaveFile(cv), SaveFileJson.Options);
+            var fileName = Slug(string.IsNullOrWhiteSpace(cv.Name) ? cv.FullName : cv.Name) + ".cvjson";
+            return Results.File(bytes, "application/json", fileName);
+        });
+
+        api.MapPost("/cvs/import", async (HttpRequest request, CvDbContext db) =>
+        {
+            // Parsed by hand rather than by model binding: picking the wrong file is the
+            // likeliest failure here, and it deserves a readable message.
+            CvSaveFile? file;
+            try
+            {
+                file = await JsonSerializer.DeserializeAsync<CvSaveFile>(
+                    request.Body, SaveFileJson.Options);
+            }
+            catch (JsonException ex)
+            {
+                return Results.Problem(
+                    $"That file could not be read as a CV save file: {ex.Message}",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!CvSaveFiles.TryToEntity(file, out var cv, out var problem))
+                return Results.Problem(problem, statusCode: StatusCodes.Status400BadRequest);
+
+            db.Cvs.Add(cv);
+            await db.SaveChangesAsync();
+            return Results.Created($"/api/cvs/{cv.Id}", Mapper.ToDto(cv));
         });
 
         api.MapPost("/cvs/{id:guid}/sections", async (Guid id, SectionRequest req, CvDbContext db) =>
@@ -291,13 +331,8 @@ public static class CvEndpoints
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Trim, clamp to the column width, and fall back when empty.</summary>
-    private static string Text(string? value, int maxLength, string fallback = "")
-    {
-        var trimmed = (value ?? "").Trim();
-        if (trimmed.Length == 0) return fallback;
-        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
-    }
+    private static string Text(string? value, int maxLength, string fallback = "") =>
+        FieldText.Clamp(value, maxLength, fallback);
 
     private static int NextOrder(IEnumerable<int> existing)
     {

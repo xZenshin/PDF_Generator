@@ -65,4 +65,27 @@ export const api = {
     request<void>(`/items/${itemId}/bullets/order`, { method: 'PUT', body: body({ ids }) }),
 
   pdfUrl: (id: string) => `${BASE}/cvs/${id}/pdf`,
+  exportUrl: (id: string) => `${BASE}/cvs/${id}/export`,
+
+  /** Imports a save file as a brand new CV. The file's text is the request body. */
+  importCv: async (text: string) => {
+    const res = await fetch(`${BASE}/cvs/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: text,
+    })
+    if (!res.ok) throw new Error(await problemText(res))
+    return (await res.json()) as Cv
+  },
+}
+
+/** Pulls the human-readable reason out of an ASP.NET ProblemDetails response. */
+async function problemText(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => '')
+  try {
+    const problem = JSON.parse(raw) as { detail?: string; title?: string }
+    return problem.detail ?? problem.title ?? `Import failed (${res.status})`
+  } catch {
+    return raw || `Import failed (${res.status})`
+  }
 }

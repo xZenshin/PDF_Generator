@@ -80,6 +80,27 @@ Both print the same content in the same arrangement. The values live in
 `Pdf/CvTheme.cs`, mirrored for the on-screen preview by the `.paper-mono` block in
 `src/index.css`.
 
+### Save files
+
+"Save to file" downloads a `.cvjson` file; "Open file" imports one back as a **new**
+CV, so importing never overwrites what you have open. The file is indented JSON, safe to
+hand-edit:
+
+```json
+{
+  "format": "cvbuilder.cv",
+  "version": 1,
+  "exportedAt": "2026-09-03T11:39:23Z",
+  "cv": { "name": "Master CV", "style": "Mono", "sections": [ ... ] }
+}
+```
+
+It carries no ids and no sort orders — order is array order, and import mints fresh rows.
+That is what lets one file be imported repeatedly, on any machine, without colliding with
+stored data. `format` and `version` are checked before anything is written, so picking the
+wrong file gets a readable message instead of a half-imported CV; files from older
+versions stay importable.
+
 ### API
 
 All routes are under `/api`. Requests replace an entity's own scalar fields; children are
@@ -93,6 +114,8 @@ managed through their own routes.
 | `PUT`    | `/cvs/{id}` | Update name, contact details, summary, style |
 | `DELETE` | `/cvs/{id}` | Delete a CV |
 | `GET`    | `/cvs/{id}/pdf` | Render the included slice to PDF |
+| `GET`    | `/cvs/{id}/export` | Download the CV as a `.cvjson` save file |
+| `POST`   | `/cvs/import` | Import a save file as a new CV |
 | `POST`   | `/cvs/{id}/sections` · `PUT` `/sections/{id}` · `DELETE` `/sections/{id}` | Sections |
 | `PUT`    | `/cvs/{id}/sections/order` | Reorder sections |
 | `POST`   | `/sections/{id}/items` · `PUT` `/items/{id}` · `DELETE` `/items/{id}` | Entries |
@@ -173,6 +196,7 @@ backend/CvBuilder.Api/
   Data/Templates.cs         The starter CV
   Api/Contracts.cs          DTOs and mapping
   Api/CvEndpoints.cs        All routes
+  Api/CvSaveFile.cs         Save-file format, validation and import mapping
   Pdf/CvTheme.cs            Typography per style (Base, Mono)
   Pdf/CvPdfGenerator.cs     Inclusion filtering + A4 layout
 frontend/src/

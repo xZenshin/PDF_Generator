@@ -90,3 +90,17 @@ public static class Mapper
 
     public static BulletDto ToDto(Bullet b) => new(b.Id, b.Text, b.SortOrder, b.Included);
 }
+
+/// <summary>
+/// Field hygiene shared by the write routes and the save-file importer: trim, clamp to
+/// the column width, and fall back when empty. Both paths accept untrusted text.
+/// </summary>
+internal static class FieldText
+{
+    public static string Clamp(string? value, int maxLength, string fallback = "")
+    {
+        var trimmed = (value ?? "").Trim();
+        if (trimmed.Length == 0) return fallback;
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+    }
+}
