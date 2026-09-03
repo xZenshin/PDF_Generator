@@ -17,3 +17,7 @@ appsettings.Development.local.json
 .idea/
 .vscode/
 .claude/
+
+# Wrangler
+.dev.vars
+.wrangler/
