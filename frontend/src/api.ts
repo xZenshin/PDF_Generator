@@ -1,68 +1,138 @@
-import type { Bullet, Cv, CvSummary, Item, Section, SectionKind } from './types'
+import { toSaveFile } from './cvFile'
+import type {
+  AiStatus,
+  Cv,
+  SaveFile,
+  TailoringPlan,
+  TailoringRecommendation,
+  TailorResponse,
+} from './types'
 
 const BASE = '/api'
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** Where the tailoring passphrase is remembered, if the user asks for that. */
+const PASSPHRASE_KEY = 'cvbuilder.passphrase'
+
+/**
+ * The DeepSeek endpoints are the only ones that cost money, so they are the only ones
+ * that ask for the shared passphrase. It travels in a header on each call — there is no
+ * session to establish — and is remembered per browser only if the user ticks the box.
+ */
+export const passphrase = {
+  load(): string {
+    try {
+      return localStorage.getItem(PASSPHRASE_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  },
+  remember(value: string) {
+    try {
+      localStorage.setItem(PASSPHRASE_KEY, value)
+    } catch {
+      /* private mode, or storage full: not worth bothering the user about */
+    }
+  },
+  forget() {
+    try {
+      localStorage.removeItem(PASSPHRASE_KEY)
+    } catch {
+      /* as above */
+    }
+  },
+}
+
+/** The passphrase header, omitted entirely when there is nothing to send. */
+function authHeader(secret: string): Record<string, string> {
+  return secret ? { 'X-Cv-Auth': secret } : {}
+}
+
+/**
+ * Every call is stateless: the CV travels in the request body, is used once, and is
+ * forgotten. There is nothing on the server to load, update or delete.
+ */
+
+async function postCv(path: string, cv: Cv): Promise<Response> {
   const res = await fetch(BASE + path, {
-    ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSaveFile(cv)),
   })
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`${init?.method ?? 'GET'} ${path} failed (${res.status}) ${detail}`.trim())
-  }
-  if (res.status === 204) return undefined as T
+  if (!res.ok) throw new Error(await problemText(res))
+  return res
+}
+
+async function postJson<T>(
+  path: string,
+  payload: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await problemText(res))
   return (await res.json()) as T
 }
 
-const body = (value: unknown) => JSON.stringify(value)
-
-// Requests mirror the C# record shapes: full replacement of an entity's own fields.
-export type CvHeader = Pick<
-  Cv,
-  'name' | 'fullName' | 'headline' | 'email' | 'phone' | 'location' | 'website' | 'summary'
->
-export type SectionBody = Pick<Section, 'title' | 'kind' | 'included'>
-export type ItemBody = Pick<
-  Item,
-  'title' | 'organization' | 'location' | 'startDate' | 'endDate' | 'included'
->
-export type BulletBody = Pick<Bullet, 'text' | 'included'>
-
 export const api = {
-  listCvs: () => request<CvSummary[]>('/cvs'),
-  getCv: (id: string) => request<Cv>(`/cvs/${id}`),
-  createCv: () => request<Cv>('/cvs', { method: 'POST' }),
-  updateCv: (id: string, b: CvHeader) =>
-    request<CvSummary>(`/cvs/${id}`, { method: 'PUT', body: body(b) }),
-  deleteCv: (id: string) => request<void>(`/cvs/${id}`, { method: 'DELETE' }),
+  /** The starter CV behind the New button. */
+  template: async (): Promise<SaveFile> => {
+    const res = await fetch(`${BASE}/cv/template`)
+    if (!res.ok) throw new Error(await problemText(res))
+    return (await res.json()) as SaveFile
+  },
 
-  addSection: (cvId: string, kind: SectionKind, title: string) =>
-    request<Section>(`/cvs/${cvId}/sections`, {
+  /** Renders the current CV. Returns the response so the caller can take the blob. */
+  pdf: (cv: Cv) => postCv('/cv/pdf', cv),
+
+  /** Normalises and serialises the CV as a .cvjson save file. */
+  export: (cv: Cv) => postCv('/cv/export', cv),
+
+  /** Validates a file's text and returns it normalised, refs filled in. */
+  import: async (text: string): Promise<SaveFile> => {
+    const res = await fetch(`${BASE}/cv/import`, {
       method: 'POST',
-      body: body({ title, kind, included: true } satisfies SectionBody),
-    }),
-  updateSection: (id: string, b: SectionBody) =>
-    request<void>(`/sections/${id}`, { method: 'PUT', body: body(b) }),
-  deleteSection: (id: string) => request<void>(`/sections/${id}`, { method: 'DELETE' }),
-  reorderSections: (cvId: string, ids: string[]) =>
-    request<void>(`/cvs/${cvId}/sections/order`, { method: 'PUT', body: body({ ids }) }),
+      headers: { 'Content-Type': 'application/json' },
+      body: text,
+    })
+    if (!res.ok) throw new Error(await problemText(res))
+    return (await res.json()) as SaveFile
+  },
 
-  addItem: (sectionId: string, b: ItemBody) =>
-    request<Item>(`/sections/${sectionId}/items`, { method: 'POST', body: body(b) }),
-  updateItem: (id: string, b: ItemBody) =>
-    request<void>(`/items/${id}`, { method: 'PUT', body: body(b) }),
-  deleteItem: (id: string) => request<void>(`/items/${id}`, { method: 'DELETE' }),
-  reorderItems: (sectionId: string, ids: string[]) =>
-    request<void>(`/sections/${sectionId}/items/order`, { method: 'PUT', body: body({ ids }) }),
+  // ---- AI tailoring ---------------------------------------------------
 
-  addBullet: (itemId: string, b: BulletBody) =>
-    request<Bullet>(`/items/${itemId}/bullets`, { method: 'POST', body: body(b) }),
-  updateBullet: (id: string, b: BulletBody) =>
-    request<void>(`/bullets/${id}`, { method: 'PUT', body: body(b) }),
-  deleteBullet: (id: string) => request<void>(`/bullets/${id}`, { method: 'DELETE' }),
-  reorderBullets: (itemId: string, ids: string[]) =>
-    request<void>(`/items/${itemId}/bullets/order`, { method: 'PUT', body: body({ ids }) }),
+  aiStatus: async (): Promise<AiStatus> => {
+    const res = await fetch(`${BASE}/ai/status`)
+    if (!res.ok) throw new Error(await problemText(res))
+    return (await res.json()) as AiStatus
+  },
 
-  pdfUrl: (id: string) => `${BASE}/cvs/${id}/pdf`,
+  /** Asks the model what to include. Changes nothing — returns the proposal. */
+  tailor: (cv: Cv, jobListing: string, secret = '') =>
+    postJson<TailorResponse>(
+      '/cv/tailor',
+      { jobListing, cv: toSaveFile(cv) },
+      authHeader(secret),
+    ),
+
+  /** Applies a confirmed recommendation and hands back the amended CV. */
+  applyTailoring: (cv: Cv, recommendation: TailoringRecommendation, secret = '') =>
+    postJson<{ plan: TailoringPlan; cv: SaveFile }>(
+      '/cv/tailor/apply',
+      { cv: toSaveFile(cv), recommendation },
+      authHeader(secret),
+    ),
+}
+
+/** Pulls the human-readable reason out of an ASP.NET ProblemDetails response. */
+async function problemText(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => '')
+  try {
+    const problem = JSON.parse(raw) as { detail?: string; title?: string }
+    return problem.detail ?? problem.title ?? `Request failed (${res.status})`
+  } catch {
+    return raw || `Request failed (${res.status})`
+  }
 }

@@ -1,4 +1,4 @@
-import type { Cv, Item, Section } from '../types'
+import type { Bullet, Cv, Item, Section } from '../types'
 
 /**
  * Mirrors CvPdfGenerator on the server: same inclusion rules, same ordering,
@@ -11,10 +11,10 @@ export function Preview({ cv }: { cv: Cv }) {
     .map((s) => ({ section: s, items: visibleItems(s) }))
     .filter((s) => s.items.length > 0)
 
-  const contact = [cv.email, cv.phone, cv.location, cv.website].filter(Boolean).join(' · ')
+  const contact = [cv.email, cv.phone, cv.location, cv.website].filter(Boolean).join(cv.style === 'Mono' ? ' | ' : ' · ')
 
   return (
-    <div className="paper">
+    <div className={`paper paper-${cv.style.toLowerCase()}`}>
       <header className="paper-head">
         {cv.fullName && <h1>{cv.fullName}</h1>}
         {cv.headline && <p className="headline">{cv.headline}</p>}
@@ -24,17 +24,54 @@ export function Preview({ cv }: { cv: Cv }) {
       {cv.summary && <p className="summary">{cv.summary}</p>}
 
       {sections.map(({ section, items }) => (
-        <section key={section.id} className="paper-section">
+        <section key={section.uid} className="paper-section">
           <h2>{section.title}</h2>
-          {items.map((item) => (
-            <PreviewItem key={item.id} section={section} item={item} />
-          ))}
+          {section.kind === 'Bullets' && section.twoColumns ? (
+            <TwoColumnBullets bullets={items.flatMap(visibleBullets)} />
+          ) : (
+            items.map((item) => <PreviewItem key={item.uid} section={section} item={item} />)
+          )}
         </section>
       ))}
 
       {sections.length === 0 && !cv.summary && (
         <p className="empty">Nothing is included yet — tick "In PDF" on the entries you want.</p>
       )}
+    </div>
+  )
+}
+
+/**
+ * The section's bullets split the same way CvPdfGenerator splits them: left column
+ * first, odd one out on the left. Two explicit lists rather than CSS `columns`, which
+ * balances by height and would drift from the PDF whenever a bullet wraps.
+ */
+function TwoColumnBullets({ bullets }: { bullets: Bullet[] }) {
+  const leftCount = Math.ceil(bullets.length / 2)
+
+  return (
+    <div className="bullet-columns">
+      {[bullets.slice(0, leftCount), bullets.slice(leftCount)].map((column, index) => (
+        <BulletList key={index} bullets={column} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * One bullet per row: a fixed-width glyph cell then the text, which is exactly what
+ * ComposeBullets draws. A CSS list would put the marker in the padding and centre it
+ * vertically, neither of which QuestPDF does.
+ */
+function BulletList({ bullets }: { bullets: Bullet[] }) {
+  return (
+    <div className="paper-bullets">
+      {bullets.map((bullet) => (
+        <div className="paper-bullet" key={bullet.uid}>
+          <span className="dot">&bull;</span>
+          <span>{bullet.text}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -51,14 +88,18 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
     )
   }
 
-  if (section.kind === 'Bullets') {
+  if (section.kind === 'FreeForm') {
     return (
-      <ul className="paper-bullets">
+      <div className="prose">
         {bullets.map((b) => (
-          <li key={b.id}>{b.text}</li>
+          <p key={b.uid}>{b.text}</p>
         ))}
-      </ul>
+      </div>
     )
+  }
+
+  if (section.kind === 'Bullets') {
+    return <BulletList bullets={bullets} />
   }
 
   const dates = [item.startDate, item.endDate].filter(Boolean).join(' – ')
@@ -74,13 +115,7 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
           {item.location && <div>{item.location}</div>}
         </div>
       </div>
-      {bullets.length > 0 && (
-        <ul className="paper-bullets">
-          {bullets.map((b) => (
-            <li key={b.id}>{b.text}</li>
-          ))}
-        </ul>
-      )}
+      {bullets.length > 0 && <BulletList bullets={bullets} />}
     </div>
   )
 }

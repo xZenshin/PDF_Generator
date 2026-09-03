@@ -2,6 +2,21 @@ import { SECTION_KINDS, type Bullet, type Cv, type Item, type Section } from '..
 import type { CvActions } from '../useCvEditor'
 import { Field, IncludeToggle, MoveButtons } from './Field'
 
+/** What a section's children are called, per layout. */
+const ITEM_LABELS: Record<Section['kind'], string> = {
+  Timeline: 'Entry',
+  Grouped: 'Category',
+  Bullets: 'Group',
+  FreeForm: 'Text block',
+}
+
+const CHILD_LABELS: Record<Section['kind'], string> = {
+  Timeline: 'Bullet',
+  Grouped: 'Skill',
+  Bullets: 'Bullet',
+  FreeForm: 'Paragraph',
+}
+
 export function Editor({ cv, actions }: { cv: Cv; actions: CvActions }) {
   return (
     <div className="editor">
@@ -9,7 +24,7 @@ export function Editor({ cv, actions }: { cv: Cv; actions: CvActions }) {
 
       {cv.sections.map((section, index) => (
         <SectionCard
-          key={section.id}
+          key={section.uid}
           section={section}
           actions={actions}
           canUp={index > 0}
@@ -20,7 +35,7 @@ export function Editor({ cv, actions }: { cv: Cv; actions: CvActions }) {
       <div className="add-section">
         <span>Add section:</span>
         {SECTION_KINDS.map((kind) => (
-          <button key={kind.value} onClick={() => void actions.addSection(kind.value)} title={kind.hint}>
+          <button key={kind.value} onClick={() => actions.addSection(kind.value)} title={kind.hint}>
             + {kind.label}
           </button>
         ))}
@@ -80,13 +95,13 @@ function SectionCard({ section, actions, canUp, canDown }: SectionCardProps) {
         <input
           className="title-input"
           value={section.title}
-          onChange={(e) => actions.updateSection(section.id, { title: e.target.value })}
+          onChange={(e) => actions.updateSection(section.uid, { title: e.target.value })}
         />
         <select
           value={section.kind}
           title="How this section is laid out in the PDF"
           onChange={(e) =>
-            actions.updateSection(section.id, { kind: e.target.value as Section['kind'] }, true)
+            actions.updateSection(section.uid, { kind: e.target.value as Section['kind'] })
           }
         >
           {SECTION_KINDS.map((kind) => (
@@ -95,24 +110,36 @@ function SectionCard({ section, actions, canUp, canDown }: SectionCardProps) {
             </option>
           ))}
         </select>
+        {section.kind === 'Bullets' && (
+          <label className="include" title="Run this section's bullets in two columns">
+            <input
+              type="checkbox"
+              checked={section.twoColumns}
+              onChange={(e) =>
+                actions.updateSection(section.uid, { twoColumns: e.target.checked })
+              }
+            />
+            <span>2 cols</span>
+          </label>
+        )}
         <IncludeToggle
           checked={section.included}
-          onChange={(included) => actions.updateSection(section.id, { included }, true)}
+          onChange={(included) => actions.updateSection(section.uid, { included })}
         />
         <MoveButtons
           canUp={canUp}
           canDown={canDown}
-          onUp={() => actions.moveSection(section.id, -1)}
-          onDown={() => actions.moveSection(section.id, 1)}
+          onUp={() => actions.moveSection(section.uid, -1)}
+          onDown={() => actions.moveSection(section.uid, 1)}
         />
-        <button className="icon danger" title="Delete section" onClick={() => actions.removeSection(section.id)}>
+        <button className="icon danger" title="Delete section" onClick={() => actions.removeSection(section.uid)}>
           ✕
         </button>
       </div>
 
       {section.items.map((item, index) => (
         <ItemRow
-          key={item.id}
+          key={item.uid}
           section={section}
           item={item}
           actions={actions}
@@ -121,8 +148,8 @@ function SectionCard({ section, actions, canUp, canDown }: SectionCardProps) {
         />
       ))}
 
-      <button className="add" onClick={() => void actions.addItem(section.id)}>
-        + {section.kind === 'Grouped' ? 'Category' : section.kind === 'Bullets' ? 'Group' : 'Entry'}
+      <button className="add" onClick={() => actions.addItem(section.uid)}>
+        + {ITEM_LABELS[section.kind]}
       </button>
     </section>
   )
@@ -137,7 +164,7 @@ interface ItemRowProps {
 }
 
 function ItemRow({ section, item, actions, canUp, canDown }: ItemRowProps) {
-  const set = (patch: Parameters<CvActions['updateItem']>[1]) => actions.updateItem(item.id, patch)
+  const set = (patch: Parameters<CvActions['updateItem']>[1]) => actions.updateItem(item.uid, patch)
   const timeline = section.kind === 'Timeline'
 
   return (
@@ -145,20 +172,20 @@ function ItemRow({ section, item, actions, canUp, canDown }: ItemRowProps) {
       <div className="item-head">
         <IncludeToggle
           checked={item.included}
-          onChange={(included) => actions.updateItem(item.id, { included }, true)}
+          onChange={(included) => actions.updateItem(item.uid, { included })}
         />
         <MoveButtons
           canUp={canUp}
           canDown={canDown}
-          onUp={() => actions.moveItem(section.id, item.id, -1)}
-          onDown={() => actions.moveItem(section.id, item.id, 1)}
+          onUp={() => actions.moveItem(section.uid, item.uid, -1)}
+          onDown={() => actions.moveItem(section.uid, item.uid, 1)}
         />
-        <button className="icon danger" title="Delete entry" onClick={() => actions.removeItem(item.id)}>
+        <button className="icon danger" title="Delete entry" onClick={() => actions.removeItem(item.uid)}>
           ✕
         </button>
       </div>
 
-      {section.kind !== 'Bullets' && (
+      {section.kind !== 'Bullets' && section.kind !== 'FreeForm' && (
         <div className="grid">
           <Field
             label={timeline ? 'Title' : 'Label'}
@@ -196,16 +223,22 @@ function ItemRow({ section, item, actions, canUp, canDown }: ItemRowProps) {
       <div className="bullets">
         {item.bullets.map((bullet, index) => (
           <BulletRow
-            key={bullet.id}
+            key={bullet.uid}
             item={item}
             bullet={bullet}
             actions={actions}
+            rows={section.kind === 'FreeForm' ? 4 : 1}
+            placeholder={
+              section.kind === 'FreeForm'
+                ? 'Write freely — this prints as a paragraph.'
+                : 'What you did, and what came of it.'
+            }
             canUp={index > 0}
             canDown={index < item.bullets.length - 1}
           />
         ))}
-        <button className="add" onClick={() => void actions.addBullet(item.id)}>
-          + {section.kind === 'Grouped' ? 'Skill' : 'Bullet'}
+        <button className="add" onClick={() => actions.addBullet(item.uid)}>
+          + {CHILD_LABELS[section.kind]}
         </button>
       </div>
     </div>
@@ -216,32 +249,34 @@ interface BulletRowProps {
   item: Item
   bullet: Bullet
   actions: CvActions
+  rows: number
+  placeholder: string
   canUp: boolean
   canDown: boolean
 }
 
-function BulletRow({ item, bullet, actions, canUp, canDown }: BulletRowProps) {
+function BulletRow({ item, bullet, actions, rows, placeholder, canUp, canDown }: BulletRowProps) {
   return (
     <div className={`bullet${bullet.included ? '' : ' excluded'}`}>
       <input
         type="checkbox"
         checked={bullet.included}
         title="Include in the exported PDF"
-        onChange={(e) => actions.updateBullet(bullet.id, { included: e.target.checked }, true)}
+        onChange={(e) => actions.updateBullet(bullet.uid, { included: e.target.checked })}
       />
       <textarea
-        rows={1}
+        rows={rows}
         value={bullet.text}
-        placeholder="What you did, and what came of it."
-        onChange={(e) => actions.updateBullet(bullet.id, { text: e.target.value })}
+        placeholder={placeholder}
+        onChange={(e) => actions.updateBullet(bullet.uid, { text: e.target.value })}
       />
       <MoveButtons
         canUp={canUp}
         canDown={canDown}
-        onUp={() => actions.moveBullet(item.id, bullet.id, -1)}
-        onDown={() => actions.moveBullet(item.id, bullet.id, 1)}
+        onUp={() => actions.moveBullet(item.uid, bullet.uid, -1)}
+        onDown={() => actions.moveBullet(item.uid, bullet.uid, 1)}
       />
-      <button className="icon danger" title="Delete bullet" onClick={() => actions.removeBullet(bullet.id)}>
+      <button className="icon danger" title="Delete bullet" onClick={() => actions.removeBullet(bullet.uid)}>
         ✕
       </button>
     </div>

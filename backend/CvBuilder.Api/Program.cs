@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
+using CvBuilder.Api.Ai;
 using CvBuilder.Api.Api;
-using CvBuilder.Api.Data;
-using Microsoft.EntityFrameworkCore;
 using QuestPDF.Infrastructure;
 
 // QuestPDF is free under the Community licence for individuals and small companies.
@@ -9,15 +8,24 @@ QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? throw new InvalidOperationException(
-        "No connection string. Set ConnectionStrings__Default (see docker-compose.yml).");
+// No database, no session, no cache: the browser holds the CV and posts it with each
+// request. That keeps hosting to a single stateless container.
 
-builder.Services.AddDbContext<CvDbContext>(o => o.UseNpgsql(connectionString));
+// The DeepSeek key stays server-side. Set it with DeepSeek__ApiKey; the app runs
+// fine without one, and the tailoring endpoint says so if it is missing.
+var deepSeek = builder.Configuration.GetSection("DeepSeek").Get<DeepSeekOptions>() ?? new DeepSeekOptions();
+builder.Services.AddSingleton(deepSeek);
+builder.Services.AddHttpClient<DeepSeekClient>(c => c.Timeout = TimeSpan.FromSeconds(120));
+
+// The tailoring endpoints are the only ones that cost money, so they are the only ones
+// behind a passphrase. Set it with Auth__Password; empty means no passphrase is asked
+// for, which is the sensible default on localhost.
+var auth = builder.Configuration.GetSection("Auth").Get<TailorAuthOptions>() ?? new TailorAuthOptions();
+builder.Services.AddSingleton(auth);
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
-    // SectionKind travels as "Timeline"/"Grouped"/"Bullets" rather than 0/1/2.
+    // SectionKind travels as "Timeline"/"Grouped"/… rather than 0/1/2.
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
@@ -31,22 +39,10 @@ builder.Services.AddCors(o => o.AddPolicy(DevCors, p => p
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<CvDbContext>();
-    db.Database.Migrate();
-
-    // First run on a fresh database gets one CV so the editor has something to open.
-    if (!await db.Cvs.AnyAsync())
-    {
-        db.Cvs.Add(Templates.NewStarterCv());
-        await db.SaveChangesAsync();
-    }
-}
-
 if (app.Environment.IsDevelopment()) app.UseCors(DevCors);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapCvEndpoints();
+app.MapTailorEndpoints();
 
 app.Run();
