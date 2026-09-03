@@ -282,72 +282,99 @@ select:focus {
   flex-wrap: wrap;
 }
 
-/* ---- Preview (mirrors the PDF) ----------------------------------------- */
+/* ---- Preview (mirrors the PDF) -----------------------------------------
+   Every size below is written in the same points as CvTheme and scaled by --pt,
+   so the preview is a scale model of the page rather than a lookalike.
+
+   --pt is one PDF point in preview pixels: a 720px-wide sheet standing in for
+   A4's 595.28pt width. The margin is QuestPDF's 1.6cm = 45.35pt, so the text
+   column comes out proportionally correct without being computed separately.
+   ------------------------------------------------------------------------ */
 
 .paper {
+  --pt: 1.2095px; /* 720 / 595.28 */
+
   background: #fff;
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 42px 46px;
+  padding: calc(45.35 * var(--pt)); /* page.Margin(1.6f, Unit.Centimetre) */
   border-radius: 4px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-  font-size: 12px;
-  line-height: 1.45;
+
+  /* CvTheme.BodySize / LineHeight */
+  font-size: calc(10 * var(--pt));
+  line-height: 1.35;
+  color: #1f2937;
 }
 
+/* CvTheme.NameSize */
 .paper-head h1 {
-  font-size: 26px;
+  font-size: calc(22 * var(--pt));
   margin: 0 0 2px;
   font-weight: 600;
 }
 
+/* CvTheme.HeadlineSize */
 .paper-head .headline {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: calc(11 * var(--pt));
 }
 
+/* CvTheme.ContactSize, then the header rule at CvTheme.HeaderRuleWeight */
 .paper-head .contact {
-  margin: 8px 0 0;
+  margin: calc(4 * var(--pt)) 0 0;
   color: var(--muted);
-  font-size: 11px;
-  border-bottom: 1px solid #d1d5db;
-  padding-bottom: 12px;
+  font-size: calc(9 * var(--pt));
+  border-bottom: calc(0.8 * var(--pt)) solid #d1d5db;
+  padding-bottom: calc(8 * var(--pt));
 }
 
 .paper .summary {
   color: var(--muted);
-  margin: 14px 0 0;
+  margin: calc(14 * var(--pt)) 0 0;
 }
 
+/* CvTheme.BlockSpacing */
 .paper-section {
-  margin-top: 18px;
+  margin-top: calc(14 * var(--pt));
 }
 
+/* CvTheme.SectionSize / SectionTracking / SectionBold / SectionRuleWeight,
+   with the gap below it from CvTheme.SectionSpacing. */
 .paper-section h2 {
-  font-size: 11px;
+  font-size: calc(10 * var(--pt));
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin: 0 0 8px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid #d1d5db;
+  margin: 0 0 calc(8 * var(--pt));
+  padding-bottom: calc(2 * var(--pt));
+  border-bottom: calc(0.6 * var(--pt)) solid #d1d5db;
 }
 
 .entry {
-  margin-bottom: 10px;
+  margin-bottom: calc(8 * var(--pt));
 }
 
 .entry-head {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: calc(12 * var(--pt));
 }
 
+/* CvTheme.ItemTitleSize */
+.entry-head strong {
+  font-size: calc(10 * var(--pt));
+  font-weight: 600;
+}
+
+/* CvTheme.MetaSize, in the 150pt right-hand column the generator reserves. */
 .entry-meta {
+  flex: 0 0 calc(150 * var(--pt));
   text-align: right;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(9 * var(--pt));
   white-space: nowrap;
 }
 
@@ -355,24 +382,56 @@ select:focus {
   color: var(--muted);
 }
 
+/* Bullets are a glyph column plus text, exactly as ComposeBullets lays them out:
+   a fixed 12pt cell, the same glyph at body size, baselines aligned. Relying on
+   CSS ::marker instead would indent the glyph and centre it vertically. */
 .paper-bullets {
-  margin: 4px 0 0;
-  padding-left: 16px;
+  margin: calc(3 * var(--pt)) 0 0;
 }
 
-.paper-bullets li {
-  margin-bottom: 2px;
+.paper-bullet {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: calc(2 * var(--pt));
 }
 
+.paper-bullet .dot {
+  flex: 0 0 calc(12 * var(--pt));
+  color: var(--muted);
+}
+
+/* CvTheme two-column bullets: row.Spacing(18) in ComposeTwoColumnBullets. */
+.bullet-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 calc(18 * var(--pt));
+}
+
+.bullet-columns .paper-bullets {
+  margin-top: 0;
+}
+
+/* ComposeGroupedItem: ConstantItem(110) for the label. */
 .grouped {
   display: flex;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: calc(6 * var(--pt));
+  margin-bottom: calc(4 * var(--pt));
 }
 
 .grouped-label {
+  font-size: calc(10 * var(--pt));
   font-weight: 600;
-  flex: 0 0 110px;
+  flex: 0 0 calc(110 * var(--pt));
+}
+
+/* ComposeProse: paragraphs at prose.Spacing(6), justified. */
+.prose p {
+  margin: 0 0 calc(6 * var(--pt));
+  text-align: justify;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
 }
 
 @media (max-width: 900px) {
@@ -384,15 +443,6 @@ select:focus {
     border-left: none;
     border-top: 1px solid var(--line);
   }
-}
-
-.prose p {
-  margin: 0 0 6px;
-  text-align: justify;
-}
-
-.prose p:last-child {
-  margin-bottom: 0;
 }
 
 /* ---- Style switch ------------------------------------------------------ */
@@ -420,28 +470,30 @@ select:focus {
   color: #fff;
 }
 
-/* ---- Mono style — mirrors CvTheme.Mono on the server ------------------- */
+/* ---- Mono style — mirrors CvTheme.Mono --------------------------------- */
 
 .paper-mono {
+  font-size: calc(9 * var(--pt));
+  line-height: 1.35;
   color: #111827;
-  line-height: 1.3;
 }
 
 .paper-mono .paper-head h1 {
-  font-size: 23px;
+  font-size: calc(19 * var(--pt));
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
 .paper-mono .paper-head .headline {
-  font-size: 12.5px;
+  font-size: calc(10 * var(--pt));
   color: #4b5563;
 }
 
 .paper-mono .paper-head .contact {
-  font-size: 10px;
+  font-size: calc(8 * var(--pt));
   color: #4b5563;
-  border-bottom: 3px solid #9ca3af;
+  border-bottom-width: calc(2.5 * var(--pt));
+  border-bottom-color: #9ca3af;
 }
 
 .paper-mono .summary {
@@ -449,19 +501,25 @@ select:focus {
 }
 
 .paper-mono .paper-section {
-  margin-top: 20px;
+  margin-top: calc(16 * var(--pt));
 }
 
 .paper-mono .paper-section h2 {
-  font-size: 14px;
-  font-weight: 400;
+  font-size: calc(11 * var(--pt));
+  font-weight: 700;
   letter-spacing: 0.1em;
-  border-bottom: 3px solid #9ca3af;
+  margin-bottom: calc(9 * var(--pt));
+  border-bottom-width: calc(2.5 * var(--pt));
+  border-bottom-color: #9ca3af;
+}
+
+.paper-mono .entry {
+  margin-bottom: calc(9 * var(--pt));
 }
 
 .paper-mono .entry-head strong,
 .paper-mono .grouped-label {
-  font-size: 11px;
+  font-size: calc(9.5 * var(--pt));
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -471,11 +529,8 @@ select:focus {
 }
 
 .paper-mono .entry-meta {
+  font-size: calc(8 * var(--pt));
   color: #4b5563;
-}
-
-.paper-mono .paper-bullets li::marker {
-  font-size: 0.65em;
 }
 
 /* ---- Tailoring dialog -------------------------------------------------- */
@@ -614,15 +669,4 @@ select:focus {
 
 .plan-notes .warn {
   color: #92400e;
-}
-
-/* Two-column bullets — the split is done in the markup so it matches the PDF. */
-.bullet-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 24px;
-}
-
-.bullet-columns .paper-bullets {
-  margin-top: 0;
 }

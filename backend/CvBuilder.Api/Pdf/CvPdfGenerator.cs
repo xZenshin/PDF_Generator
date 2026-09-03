@@ -12,6 +12,13 @@ namespace CvBuilder.Api.Pdf;
 /// </summary>
 public static class CvPdfGenerator
 {
+    /// <summary>
+    /// Bullets are drawn as a glyph in a fixed-width column, at body size so the two
+    /// baselines agree. Preview.tsx mirrors both numbers.
+    /// </summary>
+    private const string BulletGlyph = "•";
+    private const float BulletColumnWidth = 12;
+
     public static byte[] Render(Cv cv)
     {
         var theme = CvTheme.For(cv.Style);
@@ -144,9 +151,11 @@ public static class CvPdfGenerator
                 {
                     var dates = Join(" – ", item.StartDate, item.EndDate);
                     if (dates.Length > 0)
-                        right.Item().AlignRight().Text(dates).FontSize(9).FontColor(theme.Muted);
+                        right.Item().AlignRight().Text(dates)
+                            .FontSize(theme.MetaSize).FontColor(theme.Muted);
                     if (!string.IsNullOrWhiteSpace(item.Location))
-                        right.Item().AlignRight().Text(item.Location).FontSize(9).FontColor(theme.Muted);
+                        right.Item().AlignRight().Text(item.Location)
+                            .FontSize(theme.MetaSize).FontColor(theme.Muted);
                 });
             });
 
@@ -220,8 +229,7 @@ public static class CvPdfGenerator
             {
                 list.Item().Row(row =>
                 {
-                    row.ConstantItem(12).Text(theme.BulletGlyph)
-                        .FontSize(theme.BulletGlyphSize).FontColor(theme.Muted);
+                    row.ConstantItem(BulletColumnWidth).Text(BulletGlyph).FontColor(theme.Muted);
                     row.RelativeItem().Text(bullet.Text);
                 });
             }

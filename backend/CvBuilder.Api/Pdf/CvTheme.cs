@@ -36,8 +36,8 @@ public record CvTheme
     public required float ItemTitleTracking { get; init; }
     public required string OrganizationColor { get; init; }
 
-    public required string BulletGlyph { get; init; }
-    public required float BulletGlyphSize { get; init; }
+    /// <summary>Dates and locations — the small print beside an entry.</summary>
+    public required float MetaSize { get; init; }
 
     /// <summary>Gap between the header, the summary and each section.</summary>
     public required float BlockSpacing { get; init; }
@@ -76,9 +76,7 @@ public record CvTheme
         ItemTitleSize = 10,
         ItemTitleTracking = 0f,
         OrganizationColor = "#6b7280",
-
-        BulletGlyph = "•",
-        BulletGlyphSize = 10,
+        MetaSize = 9,
 
         BlockSpacing = 14,
         SectionSpacing = 8
@@ -91,8 +89,8 @@ public record CvTheme
     /// </summary>
     public static CvTheme Mono { get; } = new()
     {
-        BodySize = 10,
-        LineHeight = 1.3f,
+        BodySize = 9,
+        LineHeight = 1.35f,
 
         Ink = "#111827",
         Muted = "#4b5563",
@@ -101,25 +99,23 @@ public record CvTheme
         HeaderRuleWeight = 2.5f,
         SectionRuleWeight = 2.5f,
 
-        NameSize = 20,
+        NameSize = 19,
         NameUppercase = true,
         NameTracking = 0.06f,
-        HeadlineSize = 10.5f,
-        ContactSize = 8.5f,
+        HeadlineSize = 10,
+        ContactSize = 8,
         ContactSeparator = " | ",
         SummaryColor = "#111827",
 
-        SectionSize = 12,
+        SectionSize = 11,
         SectionTracking = 0.1f,
-        SectionBold = false,
+        SectionBold = true,
 
         ItemTitleUppercase = true,
-        ItemTitleSize = 9,
+        ItemTitleSize = 9.5f,
         ItemTitleTracking = 0.05f,
         OrganizationColor = "#111827",
-
-        BulletGlyph = "●",
-        BulletGlyphSize = 5,
+        MetaSize = 8,
 
         BlockSpacing = 16,
         SectionSpacing = 9

@@ -52,11 +52,25 @@ function TwoColumnBullets({ bullets }: { bullets: Bullet[] }) {
   return (
     <div className="bullet-columns">
       {[bullets.slice(0, leftCount), bullets.slice(leftCount)].map((column, index) => (
-        <ul key={index} className="paper-bullets">
-          {column.map((bullet) => (
-            <li key={bullet.uid}>{bullet.text}</li>
-          ))}
-        </ul>
+        <BulletList key={index} bullets={column} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * One bullet per row: a fixed-width glyph cell then the text, which is exactly what
+ * ComposeBullets draws. A CSS list would put the marker in the padding and centre it
+ * vertically, neither of which QuestPDF does.
+ */
+function BulletList({ bullets }: { bullets: Bullet[] }) {
+  return (
+    <div className="paper-bullets">
+      {bullets.map((bullet) => (
+        <div className="paper-bullet" key={bullet.uid}>
+          <span className="dot">&bull;</span>
+          <span>{bullet.text}</span>
+        </div>
       ))}
     </div>
   )
@@ -85,13 +99,7 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
   }
 
   if (section.kind === 'Bullets') {
-    return (
-      <ul className="paper-bullets">
-        {bullets.map((b) => (
-          <li key={b.uid}>{b.text}</li>
-        ))}
-      </ul>
-    )
+    return <BulletList bullets={bullets} />
   }
 
   const dates = [item.startDate, item.endDate].filter(Boolean).join(' – ')
@@ -107,13 +115,7 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
           {item.location && <div>{item.location}</div>}
         </div>
       </div>
-      {bullets.length > 0 && (
-        <ul className="paper-bullets">
-          {bullets.map((b) => (
-            <li key={b.uid}>{b.text}</li>
-          ))}
-        </ul>
-      )}
+      {bullets.length > 0 && <BulletList bullets={bullets} />}
     </div>
   )
 }
