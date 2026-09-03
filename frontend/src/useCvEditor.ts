@@ -132,9 +132,21 @@ export function useCvEditor(cvId: string | null) {
       if (!current) return
       const created = await track(api.addSection(current.id, kind, defaultSectionTitle(kind)))
       if (!created) return
+
+      // A free-form section is just a title and prose, so hand the user a paragraph
+      // to type into rather than making them build the scaffolding first.
+      let section = created
+      if (kind === 'FreeForm') {
+        const item = await track(api.addItem(created.id, blankItem(kind)))
+        if (item) {
+          const paragraph = await track(api.addBullet(item.id, { text: '', included: true }))
+          section = { ...created, items: [{ ...item, bullets: paragraph ? [paragraph] : [] }] }
+        }
+      }
+
       const now = cvRef.current
-      if (now) commit({ ...now, sections: [...now.sections, created] })
-      return created
+      if (now) commit({ ...now, sections: [...now.sections, section] })
+      return section
     },
     [commit, track],
   )
@@ -336,6 +348,7 @@ const headerOf = (cv: Cv): CvHeader => ({
   location: cv.location,
   website: cv.website,
   summary: cv.summary,
+  style: cv.style,
 })
 
 const bodyOfSection = (s: Section): SectionBody => ({
@@ -387,8 +400,14 @@ function moved<T extends { id: string }>(list: T[], id: string, delta: number): 
   return next
 }
 
-const defaultSectionTitle = (kind: SectionKind) =>
-  kind === 'Grouped' ? 'Skills' : kind === 'Bullets' ? 'Highlights' : 'Experience'
+const DEFAULT_SECTION_TITLES: Record<SectionKind, string> = {
+  Timeline: 'Experience',
+  Grouped: 'Skills',
+  Bullets: 'Highlights',
+  FreeForm: 'Personal Life',
+}
+
+const defaultSectionTitle = (kind: SectionKind) => DEFAULT_SECTION_TITLES[kind]
 
 const blankItem = (kind: SectionKind): ItemBody => ({
   title: kind === 'Grouped' ? 'Category' : '',

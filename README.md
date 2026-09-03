@@ -23,7 +23,7 @@ a PDF tailored to a specific application. Nothing is deleted when you exclude it
                                                             └────────────────┘
 ```
 
-Three deliberate choices, each to keep the project small:
+Four deliberate choices, each to keep the project small:
 
 **The PDF is rendered on the server, from the database.** The browser preview is a
 lookalike, not the source of truth — `Preview.tsx` and `CvPdfGenerator.cs` apply the same
@@ -36,6 +36,12 @@ and sit next to each other in the repo for exactly that reason.
 `Included`. The PDF generator filters on it, and drops any section or entry that would
 print empty once filtered. This is the whole tailoring feature — no separate "export
 document" table, no copying.
+
+**Styles are typography, not layout.** `CvTheme` is a record of type sizes, weights,
+tracking, rule weights, colour and spacing — nothing in it can move content around, which
+is what keeps `Base` and `Mono` the same document. `CvPdfGenerator` holds the single
+arrangement and reads every visual value from the theme. Adding a third style means adding
+one more `CvTheme` and its CSS counterpart; it cannot accidentally become a second layout.
 
 **There is no client-side state library.** `useCvEditor` holds the CV tree, applies every
 edit locally first so the preview is instant, and schedules the matching API call keyed
@@ -56,9 +62,23 @@ Every level has `SortOrder` and `Included`. `Section.Kind` decides layout:
 | `Timeline` | Title + organisation on the left, dates + location on the right, then bullets | Experience, Education, Projects |
 | `Grouped`  | `Item.Title` as a label, bullets joined onto one line  | Skills, Languages   |
 | `Bullets`  | Bullets only, no entry header                          | Highlights          |
+| `FreeForm` | Paragraphs of prose under the section title, unmarked  | Personal Life, About |
 
 Cascade deletes run in the database, so removing a section takes its items and bullets
 with it.
+
+### Styles
+
+`Cv.Style` picks the typography, saved per CV and toggled from the topbar:
+
+| Style  | Treatment |
+| ------ | --------- |
+| `Base` | Soft greys, semibold headings, hairline rules |
+| `Mono` | Tracked capitals for headings and entry titles, heavy grey rules, black body text |
+
+Both print the same content in the same arrangement. The values live in
+`Pdf/CvTheme.cs`, mirrored for the on-screen preview by the `.paper-mono` block in
+`src/index.css`.
 
 ### API
 
@@ -70,7 +90,7 @@ managed through their own routes.
 | `GET`    | `/cvs` | List CVs (id, name, last edited) |
 | `POST`   | `/cvs` | Create a CV from the starter template |
 | `GET`    | `/cvs/{id}` | Full CV tree |
-| `PUT`    | `/cvs/{id}` | Update name, contact details, summary |
+| `PUT`    | `/cvs/{id}` | Update name, contact details, summary, style |
 | `DELETE` | `/cvs/{id}` | Delete a CV |
 | `GET`    | `/cvs/{id}/pdf` | Render the included slice to PDF |
 | `POST`   | `/cvs/{id}/sections` · `PUT` `/sections/{id}` · `DELETE` `/sections/{id}` | Sections |
@@ -153,6 +173,7 @@ backend/CvBuilder.Api/
   Data/Templates.cs         The starter CV
   Api/Contracts.cs          DTOs and mapping
   Api/CvEndpoints.cs        All routes
+  Pdf/CvTheme.cs            Typography per style (Base, Mono)
   Pdf/CvPdfGenerator.cs     Inclusion filtering + A4 layout
 frontend/src/
   api.ts                    Typed fetch wrappers

@@ -282,6 +282,7 @@ public static class CvEndpoints
         cv.Location = Text(req.Location, 120);
         cv.Website = Text(req.Website, 200);
         cv.Summary = Text(req.Summary, 4000);
+        cv.Style = req.Style;
     }
 
     private static async Task Touch(CvDbContext db, Cv? cv)

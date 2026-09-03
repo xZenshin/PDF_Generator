@@ -20,7 +20,7 @@ const body = (value: unknown) => JSON.stringify(value)
 // Requests mirror the C# record shapes: full replacement of an entity's own fields.
 export type CvHeader = Pick<
   Cv,
-  'name' | 'fullName' | 'headline' | 'email' | 'phone' | 'location' | 'website' | 'summary'
+  'name' | 'fullName' | 'headline' | 'email' | 'phone' | 'location' | 'website' | 'summary' | 'style'
 >
 export type SectionBody = Pick<Section, 'title' | 'kind' | 'included'>
 export type ItemBody = Pick<

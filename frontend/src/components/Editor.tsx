@@ -2,6 +2,21 @@ import { SECTION_KINDS, type Bullet, type Cv, type Item, type Section } from '..
 import type { CvActions } from '../useCvEditor'
 import { Field, IncludeToggle, MoveButtons } from './Field'
 
+/** What a section's children are called, per layout. */
+const ITEM_LABELS: Record<Section['kind'], string> = {
+  Timeline: 'Entry',
+  Grouped: 'Category',
+  Bullets: 'Group',
+  FreeForm: 'Text block',
+}
+
+const CHILD_LABELS: Record<Section['kind'], string> = {
+  Timeline: 'Bullet',
+  Grouped: 'Skill',
+  Bullets: 'Bullet',
+  FreeForm: 'Paragraph',
+}
+
 export function Editor({ cv, actions }: { cv: Cv; actions: CvActions }) {
   return (
     <div className="editor">
@@ -122,7 +137,7 @@ function SectionCard({ section, actions, canUp, canDown }: SectionCardProps) {
       ))}
 
       <button className="add" onClick={() => void actions.addItem(section.id)}>
-        + {section.kind === 'Grouped' ? 'Category' : section.kind === 'Bullets' ? 'Group' : 'Entry'}
+        + {ITEM_LABELS[section.kind]}
       </button>
     </section>
   )
@@ -158,7 +173,7 @@ function ItemRow({ section, item, actions, canUp, canDown }: ItemRowProps) {
         </button>
       </div>
 
-      {section.kind !== 'Bullets' && (
+      {section.kind !== 'Bullets' && section.kind !== 'FreeForm' && (
         <div className="grid">
           <Field
             label={timeline ? 'Title' : 'Label'}
@@ -200,12 +215,18 @@ function ItemRow({ section, item, actions, canUp, canDown }: ItemRowProps) {
             item={item}
             bullet={bullet}
             actions={actions}
+            rows={section.kind === 'FreeForm' ? 4 : 1}
+            placeholder={
+              section.kind === 'FreeForm'
+                ? 'Write freely — this prints as a paragraph.'
+                : 'What you did, and what came of it.'
+            }
             canUp={index > 0}
             canDown={index < item.bullets.length - 1}
           />
         ))}
         <button className="add" onClick={() => void actions.addBullet(item.id)}>
-          + {section.kind === 'Grouped' ? 'Skill' : 'Bullet'}
+          + {CHILD_LABELS[section.kind]}
         </button>
       </div>
     </div>
@@ -216,11 +237,13 @@ interface BulletRowProps {
   item: Item
   bullet: Bullet
   actions: CvActions
+  rows: number
+  placeholder: string
   canUp: boolean
   canDown: boolean
 }
 
-function BulletRow({ item, bullet, actions, canUp, canDown }: BulletRowProps) {
+function BulletRow({ item, bullet, actions, rows, placeholder, canUp, canDown }: BulletRowProps) {
   return (
     <div className={`bullet${bullet.included ? '' : ' excluded'}`}>
       <input
@@ -230,9 +253,9 @@ function BulletRow({ item, bullet, actions, canUp, canDown }: BulletRowProps) {
         onChange={(e) => actions.updateBullet(bullet.id, { included: e.target.checked }, true)}
       />
       <textarea
-        rows={1}
+        rows={rows}
         value={bullet.text}
-        placeholder="What you did, and what came of it."
+        placeholder={placeholder}
         onChange={(e) => actions.updateBullet(bullet.id, { text: e.target.value })}
       />
       <MoveButtons

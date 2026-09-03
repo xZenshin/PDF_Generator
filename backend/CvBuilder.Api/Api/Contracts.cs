@@ -16,6 +16,7 @@ public record CvDto(
     string Location,
     string Website,
     string Summary,
+    CvStyle Style,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<SectionDto> Sections);
 
@@ -50,7 +51,8 @@ public record CvHeaderRequest(
     string Phone,
     string Location,
     string Website,
-    string Summary);
+    string Summary,
+    CvStyle Style);
 
 public record SectionRequest(string Title, SectionKind Kind, bool Included);
 
@@ -75,7 +77,7 @@ public static class Mapper
 
     public static CvDto ToDto(Cv cv) => new(
         cv.Id, cv.Name, cv.FullName, cv.Headline, cv.Email, cv.Phone, cv.Location,
-        cv.Website, cv.Summary, cv.UpdatedAt,
+        cv.Website, cv.Summary, cv.Style, cv.UpdatedAt,
         cv.Sections.OrderBy(s => s.SortOrder).Select(ToDto).ToList());
 
     public static SectionDto ToDto(Section s) => new(

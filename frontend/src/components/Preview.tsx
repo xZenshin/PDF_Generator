@@ -11,10 +11,10 @@ export function Preview({ cv }: { cv: Cv }) {
     .map((s) => ({ section: s, items: visibleItems(s) }))
     .filter((s) => s.items.length > 0)
 
-  const contact = [cv.email, cv.phone, cv.location, cv.website].filter(Boolean).join(' · ')
+  const contact = [cv.email, cv.phone, cv.location, cv.website].filter(Boolean).join(cv.style === 'Mono' ? ' | ' : ' · ')
 
   return (
-    <div className="paper">
+    <div className={`paper paper-${cv.style.toLowerCase()}`}>
       <header className="paper-head">
         {cv.fullName && <h1>{cv.fullName}</h1>}
         {cv.headline && <p className="headline">{cv.headline}</p>}
@@ -47,6 +47,16 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
       <div className="grouped">
         <span className="grouped-label">{item.title}</span>
         <span>{bullets.map((b) => b.text).join(', ')}</span>
+      </div>
+    )
+  }
+
+  if (section.kind === 'FreeForm') {
+    return (
+      <div className="prose">
+        {bullets.map((b) => (
+          <p key={b.id}>{b.text}</p>
+        ))}
       </div>
     )
   }

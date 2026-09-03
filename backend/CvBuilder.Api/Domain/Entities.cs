@@ -19,10 +19,26 @@ public class Cv
     public string Website { get; set; } = "";
     public string Summary { get; set; } = "";
 
+    /// <summary>Typography only — the layout is identical across styles.</summary>
+    public CvStyle Style { get; set; } = CvStyle.Base;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public List<Section> Sections { get; set; } = [];
+}
+
+/// <summary>
+/// Visual treatment of a CV. Both styles print the same content in the same
+/// arrangement — only type, rules, spacing and colour differ.
+/// </summary>
+public enum CvStyle
+{
+    /// <summary>Soft greys, semibold headings, hairline rules.</summary>
+    Base = 0,
+
+    /// <summary>Small-caps headings, heavy grey rules, black body text.</summary>
+    Mono = 1
 }
 
 public enum SectionKind
@@ -34,7 +50,10 @@ public enum SectionKind
     Grouped = 1,
 
     /// <summary>Bullets only, no item headers.</summary>
-    Bullets = 2
+    Bullets = 2,
+
+    /// <summary>Prose under the section title. Each bullet is a paragraph, unmarked.</summary>
+    FreeForm = 3
 }
 
 public class Section

@@ -3,7 +3,7 @@ import { api } from './api'
 import { Editor } from './components/Editor'
 import { Preview } from './components/Preview'
 import { useCvEditor } from './useCvEditor'
-import type { CvSummary } from './types'
+import { CV_STYLES, type CvSummary } from './types'
 
 const LAST_CV_KEY = 'cvbuilder.lastCvId'
 
@@ -139,6 +139,21 @@ export default function App() {
         <button onClick={() => void deleteCv()} disabled={busy || !cvId}>
           Delete
         </button>
+
+        {cv && (
+          <div className="segmented" role="group" aria-label="CV style">
+            {CV_STYLES.map((option) => (
+              <button
+                key={option.value}
+                title={option.hint}
+                className={cv.style === option.value ? 'seg active' : 'seg'}
+                onClick={() => actions.updateHeader({ style: option.value })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <span className={`status status-${status}`}>{statusText(status)}</span>
 

@@ -384,3 +384,95 @@ select:focus {
     border-top: 1px solid var(--line);
   }
 }
+
+.prose p {
+  margin: 0 0 6px;
+  text-align: justify;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- Style switch ------------------------------------------------------ */
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented .seg {
+  border: none;
+  border-radius: 0;
+  padding: 6px 12px;
+  color: var(--muted);
+}
+
+.segmented .seg + .seg {
+  border-left: 1px solid var(--line);
+}
+
+.segmented .seg.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+/* ---- Mono style — mirrors CvTheme.Mono on the server ------------------- */
+
+.paper-mono {
+  color: #111827;
+  line-height: 1.3;
+}
+
+.paper-mono .paper-head h1 {
+  font-size: 23px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.paper-mono .paper-head .headline {
+  font-size: 12.5px;
+  color: #4b5563;
+}
+
+.paper-mono .paper-head .contact {
+  font-size: 10px;
+  color: #4b5563;
+  border-bottom: 3px solid #9ca3af;
+}
+
+.paper-mono .summary {
+  color: #111827;
+}
+
+.paper-mono .paper-section {
+  margin-top: 20px;
+}
+
+.paper-mono .paper-section h2 {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  border-bottom: 3px solid #9ca3af;
+}
+
+.paper-mono .entry-head strong,
+.paper-mono .grouped-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.paper-mono .entry-head .muted {
+  color: #111827;
+}
+
+.paper-mono .entry-meta {
+  color: #4b5563;
+}
+
+.paper-mono .paper-bullets li::marker {
+  font-size: 0.65em;
+}
