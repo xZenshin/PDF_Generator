@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Node
+node_modules/
+dist/
+
+# Local overrides
+appsettings.Development.local.json
+.env
+.env.local
+
+# Editors
+.vs/
+.idea/
+.vscode/
+.claude/
