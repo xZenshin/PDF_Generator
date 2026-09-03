@@ -5,9 +5,8 @@ using CvBuilder.Api.Domain;
 namespace CvBuilder.Api.Api;
 
 /// <summary>
-/// The on-disk save file. Deliberately self-contained and id-free: order comes from
-/// array order, and importing always mints fresh rows, so a file can be imported
-/// repeatedly, on any machine, without colliding with what is already stored.
+/// The on-disk save file — and, since the database was removed, the only durable copy
+/// of a CV. Order is array order. Ids are the stable refs an LLM points at.
 /// </summary>
 public record CvSaveFile(
     string Format,
@@ -62,12 +61,12 @@ public static class CvSaveFiles
         new SavedCv(
             cv.Name, cv.FullName, cv.Headline, cv.Email, cv.Phone, cv.Location,
             cv.Website, cv.Summary, cv.Style,
-            cv.Sections.OrderBy(s => s.SortOrder).Select(section => new SavedSection(
+            cv.Sections.Select(section => new SavedSection(
                 section.Ref, section.Title, section.Kind, section.Included, section.TwoColumns,
-                section.Items.OrderBy(i => i.SortOrder).Select(item => new SavedItem(
+                section.Items.Select(item => new SavedItem(
                     item.Ref, item.Title, item.Organization, item.Location,
                     item.StartDate, item.EndDate, item.Included,
-                    item.Bullets.OrderBy(b => b.SortOrder)
+                    item.Bullets
                         .Select(bullet => new SavedBullet(bullet.Ref, bullet.Text, bullet.Included))
                         .ToList()))
                     .ToList()))
@@ -112,15 +111,14 @@ public static class CvSaveFiles
             Website = FieldText.Clamp(saved.Website, 200),
             Summary = FieldText.Clamp(saved.Summary, 4000),
             Style = saved.Style,
-            Sections = (saved.Sections ?? []).Select((section, sectionIndex) => new Section
+            Sections = (saved.Sections ?? []).Select(section => new Section
             {
                 Ref = FieldText.Clamp(section.Id, 40),
                 Title = FieldText.Clamp(section.Title, 120, "Untitled section"),
                 Kind = section.Kind,
                 Included = section.Included,
                 TwoColumns = section.TwoColumns,
-                SortOrder = sectionIndex,
-                Items = (section.Items ?? []).Select((item, itemIndex) => new CvItem
+                Items = (section.Items ?? []).Select(item => new CvItem
                 {
                     Ref = FieldText.Clamp(item.Id, 40),
                     Title = FieldText.Clamp(item.Title, 200),
@@ -129,13 +127,11 @@ public static class CvSaveFiles
                     StartDate = FieldText.Clamp(item.StartDate, 40),
                     EndDate = FieldText.Clamp(item.EndDate, 40),
                     Included = item.Included,
-                    SortOrder = itemIndex,
-                    Bullets = (item.Bullets ?? []).Select((bullet, bulletIndex) => new Bullet
+                    Bullets = (item.Bullets ?? []).Select(bullet => new Bullet
                     {
                         Ref = FieldText.Clamp(bullet.Id, 40),
                         Text = FieldText.Clamp(bullet.Text, 1000),
-                        Included = bullet.Included,
-                        SortOrder = bulletIndex
+                        Included = bullet.Included
                     }).ToList()
                 }).ToList()
             }).ToList()

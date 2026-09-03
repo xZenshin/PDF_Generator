@@ -1,322 +1,241 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type BulletBody, type CvHeader, type ItemBody, type SectionBody } from './api'
-import type { Bullet, Cv, Item, Section, SectionKind } from './types'
+import { api } from './api'
+import { blankBullet, blankItem, blankSection, toEditable, toSaveFile } from './cvFile'
+import type { Bullet, Cv, Item, SectionKind, Section } from './types'
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+const DRAFT_KEY = 'cvbuilder.draft'
 
-/** Typing keeps the preview instant; the write is coalesced to one request per field. */
-const DEBOUNCE_MS = 500
+/** Autosave to the browser is cheap, but not on every keystroke. */
+const AUTOSAVE_MS = 400
 
 /**
- * Holds the CV being edited. Every mutation updates local state immediately and
- * schedules the matching API call, keyed per entity so rapid typing collapses into
- * one request. `flush()` forces everything out — call it before exporting the PDF,
- * which is rendered server-side from whatever is stored.
+ * Holds the CV being edited, entirely in the browser. There is no server-side store,
+ * so every edit is a local state update — instant, and free to host.
+ *
+ * A draft is mirrored into localStorage so a refresh or a closed tab does not lose
+ * work. That is a convenience, not a backup: it is per-browser, and clearing site data
+ * clears it. The `.cvjson` file is the real save.
  */
-export function useCvEditor(cvId: string | null) {
+export function useCvEditor() {
   const [cv, setCv] = useState<Cv | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<SaveStatus>('idle')
+  const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /** True once edits have been made that are not in any file yet. */
+  const [unsaved, setUnsaved] = useState(false)
 
   // Mutations read the latest tree from here, so several edits in one tick compose.
   const cvRef = useRef<Cv | null>(null)
-  const inflight = useRef(new Set<Promise<unknown>>())
-  const queued = useRef(new Map<string, { timer: number; fire: () => void }>())
+  const autosave = useRef<number>(0)
 
-  const commit = useCallback((next: Cv) => {
+  const commit = useCallback((next: Cv, marksUnsaved = true) => {
     cvRef.current = next
     setCv(next)
-  }, [])
+    if (marksUnsaved) setUnsaved(true)
 
-  const track = useCallback(<T,>(p: Promise<T>): Promise<T | undefined> => {
-    inflight.current.add(p)
-    setStatus('saving')
-    const done = (failure?: unknown) => {
-      inflight.current.delete(p)
-      if (failure !== undefined) {
-        setError(failure instanceof Error ? failure.message : String(failure))
-        setStatus('error')
-      } else if (inflight.current.size === 0 && queued.current.size === 0) {
-        setStatus('saved')
-      }
-    }
-    return p.then(
-      (value) => {
-        done()
-        return value
-      },
-      (err) => {
-        done(err ?? new Error('Request failed'))
-        return undefined
-      },
-    )
-  }, [])
-
-  const later = useCallback(
-    (key: string, send: () => Promise<unknown>) => {
-      const existing = queued.current.get(key)
-      if (existing) window.clearTimeout(existing.timer)
-
-      const fire = () => {
-        queued.current.delete(key)
-        void track(send())
-      }
-      queued.current.set(key, { timer: window.setTimeout(fire, DEBOUNCE_MS), fire })
-      setStatus('saving')
-    },
-    [track],
-  )
-
-  const cancel = useCallback((keys: string[]) => {
-    for (const key of keys) {
-      const queuedSave = queued.current.get(key)
-      if (queuedSave) {
-        window.clearTimeout(queuedSave.timer)
-        queued.current.delete(key)
-      }
-    }
-  }, [])
-
-  const flush = useCallback(async () => {
-    for (const entry of [...queued.current.values()]) {
-      window.clearTimeout(entry.timer)
-      entry.fire()
-    }
-    await Promise.allSettled([...inflight.current])
-  }, [])
-
-  const load = useCallback(
-    async (id: string) => {
-      setLoading(true)
-      setError(null)
+    window.clearTimeout(autosave.current)
+    autosave.current = window.setTimeout(() => {
       try {
-        const next = await api.getCv(id)
-        commit(next)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        setLoading(false)
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(toSaveFile(next)))
+      } catch {
+        // A full or disabled localStorage must not break editing.
       }
+    }, AUTOSAVE_MS)
+  }, [])
+
+  /** Takes a CV wholesale — from a file, from the template, or from tailoring. */
+  const adopt = useCallback(
+    (next: Cv, marksUnsaved = true) => {
+      commit(next, marksUnsaved)
     },
     [commit],
   )
 
+  const markSaved = useCallback(() => setUnsaved(false), [])
+
+  // Restore the draft, or start from the server's starter CV.
+  const started = useRef(false)
   useEffect(() => {
-    if (!cvId) {
-      cvRef.current = null
-      setCv(null)
-      return
+    if (started.current) return
+    started.current = true
+
+    const draft = (() => {
+      try {
+        return localStorage.getItem(DRAFT_KEY)
+      } catch {
+        return null
+      }
+    })()
+
+    if (draft) {
+      try {
+        commit(toEditable(JSON.parse(draft)), false)
+        setReady(true)
+        return
+      } catch {
+        // A corrupt draft is not worth blocking on; fall through to the template.
+      }
     }
-    void load(cvId)
-  }, [cvId, load])
+
+    api
+      .template()
+      .then((file) => commit(toEditable(file), false))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setReady(true))
+  }, [commit])
+
+  const startNew = useCallback(async () => {
+    const file = await api.template()
+    commit(toEditable(file), false)
+  }, [commit])
 
   // ---- Header -----------------------------------------------------------
 
   const updateHeader = useCallback(
-    (patch: Partial<CvHeader>) => {
+    (patch: Partial<Omit<Cv, 'uid' | 'sections'>>) => {
       const current = cvRef.current
       if (!current) return
-      const next = { ...current, ...patch }
-      commit(next)
-      later(`cv:${next.id}`, () => api.updateCv(next.id, headerOf(next)))
+      commit({ ...current, ...patch })
     },
-    [commit, later],
+    [commit],
   )
 
   // ---- Sections ---------------------------------------------------------
 
   const addSection = useCallback(
-    async (kind: SectionKind) => {
+    (kind: SectionKind) => {
       const current = cvRef.current
       if (!current) return
-      const created = await track(api.addSection(current.id, kind, defaultSectionTitle(kind)))
-      if (!created) return
-
-      // A free-form section is just a title and prose, so hand the user a paragraph
-      // to type into rather than making them build the scaffolding first.
-      let section = created
-      if (kind === 'FreeForm') {
-        const item = await track(api.addItem(created.id, blankItem(kind)))
-        if (item) {
-          const paragraph = await track(api.addBullet(item.id, { text: '', included: true }))
-          section = { ...created, items: [{ ...item, bullets: paragraph ? [paragraph] : [] }] }
-        }
-      }
-
-      const now = cvRef.current
-      if (now) commit({ ...now, sections: [...now.sections, section] })
-      return section
+      commit({ ...current, sections: [...current.sections, blankSection(kind)] })
     },
-    [commit, track],
+    [commit],
   )
 
   const updateSection = useCallback(
-    (id: string, patch: Partial<SectionBody>, immediate = false) => {
+    (uid: string, patch: Partial<Section>) => {
       const current = cvRef.current
       if (!current) return
-      const next = mapSections(current, (s) => (s.id === id ? { ...s, ...patch } : s))
-      commit(next)
-
-      const section = next.sections.find((s) => s.id === id)
-      if (!section) return
-      const send = () => api.updateSection(id, bodyOfSection(section))
-      if (immediate) void track(send())
-      else later(`section:${id}`, send)
+      commit(mapSections(current, (s) => (s.uid === uid ? { ...s, ...patch } : s)))
     },
-    [commit, later, track],
+    [commit],
   )
 
   const removeSection = useCallback(
-    (id: string) => {
+    (uid: string) => {
       const current = cvRef.current
       if (!current) return
-      const section = current.sections.find((s) => s.id === id)
-      if (section) cancel(subtreeKeys(section))
-
-      commit({ ...current, sections: current.sections.filter((s) => s.id !== id) })
-      void track(api.deleteSection(id))
+      commit({ ...current, sections: current.sections.filter((s) => s.uid !== uid) })
     },
-    [cancel, commit, track],
+    [commit],
   )
 
   const moveSection = useCallback(
-    (id: string, delta: number) => {
+    (uid: string, delta: number) => {
       const current = cvRef.current
       if (!current) return
-      const sections = moved(current.sections, id, delta)
-      if (!sections) return
-      commit({ ...current, sections })
-      void track(api.reorderSections(current.id, sections.map((s) => s.id)))
+      const sections = moved(current.sections, uid, delta)
+      if (sections) commit({ ...current, sections })
     },
-    [commit, track],
+    [commit],
   )
 
   // ---- Items ------------------------------------------------------------
 
   const addItem = useCallback(
-    async (sectionId: string) => {
+    (sectionUid: string) => {
       const current = cvRef.current
       if (!current) return
-      const section = current.sections.find((s) => s.id === sectionId)
-      const created = await track(api.addItem(sectionId, blankItem(section?.kind ?? 'Timeline')))
-      if (!created) return
-      const now = cvRef.current
-      if (!now) return
       commit(
-        mapSections(now, (s) =>
-          s.id === sectionId ? { ...s, items: [...s.items, created] } : s,
+        mapSections(current, (s) =>
+          s.uid === sectionUid ? { ...s, items: [...s.items, blankItem(s.kind)] } : s,
         ),
       )
-      return created
     },
-    [commit, track],
+    [commit],
   )
 
   const updateItem = useCallback(
-    (id: string, patch: Partial<ItemBody>, immediate = false) => {
+    (uid: string, patch: Partial<Item>) => {
       const current = cvRef.current
       if (!current) return
-      const next = mapItems(current, (i) => (i.id === id ? { ...i, ...patch } : i))
-      commit(next)
-
-      const item = findItem(next, id)
-      if (!item) return
-      const send = () => api.updateItem(id, bodyOfItem(item))
-      if (immediate) void track(send())
-      else later(`item:${id}`, send)
+      commit(mapItems(current, (i) => (i.uid === uid ? { ...i, ...patch } : i)))
     },
-    [commit, later, track],
+    [commit],
   )
 
   const removeItem = useCallback(
-    (id: string) => {
+    (uid: string) => {
       const current = cvRef.current
       if (!current) return
-      const item = findItem(current, id)
-      if (item) cancel([`item:${id}`, ...item.bullets.map((b) => `bullet:${b.id}`)])
-
-      commit(mapSections(current, (s) => ({ ...s, items: s.items.filter((i) => i.id !== id) })))
-      void track(api.deleteItem(id))
+      commit(mapSections(current, (s) => ({ ...s, items: s.items.filter((i) => i.uid !== uid) })))
     },
-    [cancel, commit, track],
+    [commit],
   )
 
   const moveItem = useCallback(
-    (sectionId: string, id: string, delta: number) => {
+    (sectionUid: string, uid: string, delta: number) => {
       const current = cvRef.current
       if (!current) return
-      const section = current.sections.find((s) => s.id === sectionId)
-      const items = section && moved(section.items, id, delta)
-      if (!items) return
-      commit(mapSections(current, (s) => (s.id === sectionId ? { ...s, items } : s)))
-      void track(api.reorderItems(sectionId, items.map((i) => i.id)))
+      const section = current.sections.find((s) => s.uid === sectionUid)
+      const items = section && moved(section.items, uid, delta)
+      if (items) commit(mapSections(current, (s) => (s.uid === sectionUid ? { ...s, items } : s)))
     },
-    [commit, track],
+    [commit],
   )
 
   // ---- Bullets ----------------------------------------------------------
 
   const addBullet = useCallback(
-    async (itemId: string) => {
-      const created = await track(api.addBullet(itemId, { text: '', included: true }))
-      if (!created) return
-      const now = cvRef.current
-      if (!now) return
-      commit(mapItems(now, (i) => (i.id === itemId ? { ...i, bullets: [...i.bullets, created] } : i)))
-      return created
+    (itemUid: string) => {
+      const current = cvRef.current
+      if (!current) return
+      commit(
+        mapItems(current, (i) =>
+          i.uid === itemUid ? { ...i, bullets: [...i.bullets, blankBullet()] } : i,
+        ),
+      )
     },
-    [commit, track],
+    [commit],
   )
 
   const updateBullet = useCallback(
-    (id: string, patch: Partial<BulletBody>, immediate = false) => {
+    (uid: string, patch: Partial<Bullet>) => {
       const current = cvRef.current
       if (!current) return
-      const next = mapBullets(current, (b) => (b.id === id ? { ...b, ...patch } : b))
-      commit(next)
-
-      const bullet = findBullet(next, id)
-      if (!bullet) return
-      const send = () => api.updateBullet(id, { text: bullet.text, included: bullet.included })
-      if (immediate) void track(send())
-      else later(`bullet:${id}`, send)
+      commit(mapBullets(current, (b) => (b.uid === uid ? { ...b, ...patch } : b)))
     },
-    [commit, later, track],
+    [commit],
   )
 
   const removeBullet = useCallback(
-    (id: string) => {
+    (uid: string) => {
       const current = cvRef.current
       if (!current) return
-      cancel([`bullet:${id}`])
-      commit(mapItems(current, (i) => ({ ...i, bullets: i.bullets.filter((b) => b.id !== id) })))
-      void track(api.deleteBullet(id))
+      commit(mapItems(current, (i) => ({ ...i, bullets: i.bullets.filter((b) => b.uid !== uid) })))
     },
-    [cancel, commit, track],
+    [commit],
   )
 
   const moveBullet = useCallback(
-    (itemId: string, id: string, delta: number) => {
+    (itemUid: string, uid: string, delta: number) => {
       const current = cvRef.current
       if (!current) return
-      const item = findItem(current, itemId)
-      const bullets = item && moved(item.bullets, id, delta)
-      if (!bullets) return
-      commit(mapItems(current, (i) => (i.id === itemId ? { ...i, bullets } : i)))
-      void track(api.reorderBullets(itemId, bullets.map((b) => b.id)))
+      const item = findItem(current, itemUid)
+      const bullets = item && moved(item.bullets, uid, delta)
+      if (bullets) commit(mapItems(current, (i) => (i.uid === itemUid ? { ...i, bullets } : i)))
     },
-    [commit, track],
+    [commit],
   )
 
   return {
     cv,
-    loading,
-    status,
+    ready,
     error,
+    unsaved,
     dismissError: useCallback(() => setError(null), []),
-    flush,
-    reload: useCallback(() => (cvId ? load(cvId) : Promise.resolve()), [cvId, load]),
+    adopt,
+    markSaved,
+    startNew,
     actions: {
       updateHeader,
       addSection,
@@ -339,34 +258,6 @@ export type CvActions = ReturnType<typeof useCvEditor>['actions']
 
 // ---- Pure helpers -------------------------------------------------------
 
-const headerOf = (cv: Cv): CvHeader => ({
-  name: cv.name,
-  fullName: cv.fullName,
-  headline: cv.headline,
-  email: cv.email,
-  phone: cv.phone,
-  location: cv.location,
-  website: cv.website,
-  summary: cv.summary,
-  style: cv.style,
-})
-
-const bodyOfSection = (s: Section): SectionBody => ({
-  title: s.title,
-  kind: s.kind,
-  included: s.included,
-  twoColumns: s.twoColumns,
-})
-
-const bodyOfItem = (i: Item): ItemBody => ({
-  title: i.title,
-  organization: i.organization,
-  location: i.location,
-  startDate: i.startDate,
-  endDate: i.endDate,
-  included: i.included,
-})
-
 const mapSections = (cv: Cv, fn: (s: Section) => Section): Cv => ({
   ...cv,
   sections: cv.sections.map(fn),
@@ -378,20 +269,12 @@ const mapItems = (cv: Cv, fn: (i: Item) => Item): Cv =>
 const mapBullets = (cv: Cv, fn: (b: Bullet) => Bullet): Cv =>
   mapItems(cv, (i) => ({ ...i, bullets: i.bullets.map(fn) }))
 
-const findItem = (cv: Cv, id: string): Item | undefined =>
-  cv.sections.flatMap((s) => s.items).find((i) => i.id === id)
+const findItem = (cv: Cv, uid: string): Item | undefined =>
+  cv.sections.flatMap((s) => s.items).find((i) => i.uid === uid)
 
-const findBullet = (cv: Cv, id: string): Bullet | undefined =>
-  cv.sections.flatMap((s) => s.items).flatMap((i) => i.bullets).find((b) => b.id === id)
-
-const subtreeKeys = (section: Section): string[] => [
-  `section:${section.id}`,
-  ...section.items.flatMap((i) => [`item:${i.id}`, ...i.bullets.map((b) => `bullet:${b.id}`)]),
-]
-
-/** Returns the list with `id` shifted by `delta`, or undefined when it cannot move. */
-function moved<T extends { id: string }>(list: T[], id: string, delta: number): T[] | undefined {
-  const from = list.findIndex((x) => x.id === id)
+/** Returns the list with `uid` shifted by `delta`, or undefined when it cannot move. */
+function moved<T extends { uid: string }>(list: T[], uid: string, delta: number): T[] | undefined {
+  const from = list.findIndex((x) => x.uid === uid)
   const to = from + delta
   if (from < 0 || to < 0 || to >= list.length) return undefined
 
@@ -400,21 +283,3 @@ function moved<T extends { id: string }>(list: T[], id: string, delta: number): 
   next.splice(to, 0, row)
   return next
 }
-
-const DEFAULT_SECTION_TITLES: Record<SectionKind, string> = {
-  Timeline: 'Experience',
-  Grouped: 'Skills',
-  Bullets: 'Highlights',
-  FreeForm: 'Personal Life',
-}
-
-const defaultSectionTitle = (kind: SectionKind) => DEFAULT_SECTION_TITLES[kind]
-
-const blankItem = (kind: SectionKind): ItemBody => ({
-  title: kind === 'Grouped' ? 'Category' : '',
-  organization: '',
-  location: '',
-  startDate: '',
-  endDate: '',
-  included: true,
-})

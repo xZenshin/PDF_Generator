@@ -2,34 +2,37 @@ export type CvStyle = 'Base' | 'Mono'
 
 export type SectionKind = 'Timeline' | 'Grouped' | 'Bullets' | 'FreeForm'
 
+/**
+ * The CV as the browser holds it — the save-file shape, plus a `uid` on each node.
+ *
+ * `id` is the stable ref an LLM points at ("exp_003"); it is assigned server-side and
+ * is blank on rows you have only just added. `uid` is a local React key, generated
+ * here and never sent anywhere. Order is array order: there are no sort fields.
+ */
 export interface Bullet {
+  uid: string
   id: string
-  /** Stable handle an LLM can point at, e.g. "exp_003". */
-  ref: string
   text: string
-  sortOrder: number
   included: boolean
 }
 
 export interface Item {
+  uid: string
   id: string
-  ref: string
   title: string
   organization: string
   location: string
   startDate: string
   endDate: string
-  sortOrder: number
   included: boolean
   bullets: Bullet[]
 }
 
 export interface Section {
+  uid: string
   id: string
-  ref: string
   title: string
   kind: SectionKind
-  sortOrder: number
   included: boolean
   /** Bullets sections only: run the section's bullets in two columns. */
   twoColumns: boolean
@@ -37,7 +40,7 @@ export interface Section {
 }
 
 export interface Cv {
-  id: string
+  uid: string
   name: string
   fullName: string
   headline: string
@@ -47,15 +50,15 @@ export interface Cv {
   website: string
   summary: string
   style: CvStyle
-  updatedAt: string
   sections: Section[]
 }
 
-export interface CvSummary {
-  id: string
-  name: string
-  fullName: string
-  updatedAt: string
+/** What the API sends and receives: the same tree without the local uids. */
+export interface SaveFile {
+  format: string
+  version: number
+  exportedAt: string
+  cv: Omit<Cv, 'uid'>
 }
 
 export const SECTION_KINDS: { value: SectionKind; label: string; hint: string }[] = [

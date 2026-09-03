@@ -24,12 +24,12 @@ export function Preview({ cv }: { cv: Cv }) {
       {cv.summary && <p className="summary">{cv.summary}</p>}
 
       {sections.map(({ section, items }) => (
-        <section key={section.id} className="paper-section">
+        <section key={section.uid} className="paper-section">
           <h2>{section.title}</h2>
           {section.kind === 'Bullets' && section.twoColumns ? (
             <TwoColumnBullets bullets={items.flatMap(visibleBullets)} />
           ) : (
-            items.map((item) => <PreviewItem key={item.id} section={section} item={item} />)
+            items.map((item) => <PreviewItem key={item.uid} section={section} item={item} />)
           )}
         </section>
       ))}
@@ -54,7 +54,7 @@ function TwoColumnBullets({ bullets }: { bullets: Bullet[] }) {
       {[bullets.slice(0, leftCount), bullets.slice(leftCount)].map((column, index) => (
         <ul key={index} className="paper-bullets">
           {column.map((bullet) => (
-            <li key={bullet.id}>{bullet.text}</li>
+            <li key={bullet.uid}>{bullet.text}</li>
           ))}
         </ul>
       ))}
@@ -78,7 +78,7 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
     return (
       <div className="prose">
         {bullets.map((b) => (
-          <p key={b.id}>{b.text}</p>
+          <p key={b.uid}>{b.text}</p>
         ))}
       </div>
     )
@@ -88,7 +88,7 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
     return (
       <ul className="paper-bullets">
         {bullets.map((b) => (
-          <li key={b.id}>{b.text}</li>
+          <li key={b.uid}>{b.text}</li>
         ))}
       </ul>
     )
@@ -110,7 +110,7 @@ function PreviewItem({ section, item }: { section: Section; item: Item }) {
       {bullets.length > 0 && (
         <ul className="paper-bullets">
           {bullets.map((b) => (
-            <li key={b.id}>{b.text}</li>
+            <li key={b.uid}>{b.text}</li>
           ))}
         </ul>
       )}

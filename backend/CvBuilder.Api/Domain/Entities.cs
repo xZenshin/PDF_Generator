@@ -1,13 +1,12 @@
 namespace CvBuilder.Api.Domain;
 
 /// <summary>
-/// The "master CV": one document holding every entry the user has ever written.
-/// A PDF export is a filtered projection of it (see the Included flags below).
+/// A CV as the API works with it: built from a request body, used, and thrown away.
+/// Nothing here is persisted — the browser holds the document and the save file is the
+/// only durable copy. Order is list order, so there are no sort columns to keep straight.
 /// </summary>
 public class Cv
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-
     /// <summary>Name of the CV itself, e.g. "Master CV". Not printed.</summary>
     public string Name { get; set; } = "My CV";
 
@@ -21,9 +20,6 @@ public class Cv
 
     /// <summary>Typography only — the layout is identical across styles.</summary>
     public CvStyle Style { get; set; } = CvStyle.Base;
-
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public List<Section> Sections { get; set; } = [];
 }
@@ -58,23 +54,18 @@ public enum SectionKind
 
 public class Section
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid CvId { get; set; }
-    public Cv? Cv { get; set; }
-
     /// <summary>Stable, human-readable handle (e.g. "exp"). See <see cref="CvRefs"/>.</summary>
     public string Ref { get; set; } = "";
 
     public string Title { get; set; } = "";
     public SectionKind Kind { get; set; } = SectionKind.Timeline;
-    public int SortOrder { get; set; }
 
-    /// <summary>Excluded sections stay in the database but are left out of the PDF.</summary>
+    /// <summary>Excluded sections stay in the document but are left out of the PDF.</summary>
     public bool Included { get; set; } = true;
 
     /// <summary>
     /// Runs the section's bullets in two columns to save vertical space. Only
-    /// <see cref="SectionKind.Bullets"/> honours it; stored but ignored elsewhere.
+    /// <see cref="SectionKind.Bullets"/> honours it; carried but ignored elsewhere.
     /// </summary>
     public bool TwoColumns { get; set; }
 
@@ -83,10 +74,6 @@ public class Section
 
 public class CvItem
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid SectionId { get; set; }
-    public Section? Section { get; set; }
-
     /// <summary>Stable, human-readable handle (e.g. "exp_i01").</summary>
     public string Ref { get; set; } = "";
 
@@ -99,7 +86,6 @@ public class CvItem
     public string StartDate { get; set; } = "";
     public string EndDate { get; set; } = "";
 
-    public int SortOrder { get; set; }
     public bool Included { get; set; } = true;
 
     public List<Bullet> Bullets { get; set; } = [];
@@ -107,14 +93,9 @@ public class CvItem
 
 public class Bullet
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid ItemId { get; set; }
-    public CvItem? Item { get; set; }
-
     /// <summary>Stable, human-readable handle (e.g. "exp_003").</summary>
     public string Ref { get; set; } = "";
 
     public string Text { get; set; } = "";
-    public int SortOrder { get; set; }
     public bool Included { get; set; } = true;
 }

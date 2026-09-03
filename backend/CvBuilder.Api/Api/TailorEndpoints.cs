@@ -1,17 +1,19 @@
 using System.Text;
 using System.Text.Json;
 using CvBuilder.Api.Ai;
-using CvBuilder.Api.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace CvBuilder.Api.Api;
 
-public record TailorRequest(string JobListing);
+public record TailorRequest(string JobListing, CvSaveFile? Cv);
+
+public record ApplyRequest(CvSaveFile? Cv, TailoringRecommendation? Recommendation);
 
 public record TailorResponse(
     string Model,
     TailoringRecommendation Recommendation,
     TailoringPlan Plan);
+
+public record ApplyResponse(TailoringPlan Plan, CvSaveFile Cv);
 
 public record AiStatus(bool Configured, string Model);
 
@@ -22,19 +24,15 @@ public static class TailorEndpoints
 
     public static void MapTailorEndpoints(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api");
-
-        api.MapGet("/ai/status", (DeepSeekClient client) =>
+        app.MapGet("/api/ai/status", (DeepSeekClient client) =>
             Results.Ok(new AiStatus(client.IsConfigured, client.Model)));
 
-        // Asks the model which parts of this CV suit the listing, and works out what
-        // that would change. Nothing is written — the user confirms first.
-        api.MapPost("/cvs/{id:guid}/tailor", async (
-            Guid id,
-            TailorRequest req,
-            CvDbContext db,
-            DeepSeekClient client,
-            CancellationToken ct) =>
+        var api = app.MapGroup("/api/cv");
+
+        // Asks the model which parts of the posted CV suit the listing, and works out
+        // what that would change. Writes nothing anywhere — the user confirms first.
+        api.MapPost("/tailor", async (
+            TailorRequest req, DeepSeekClient client, CancellationToken ct) =>
         {
             var listing = (req.JobListing ?? "").Trim();
             if (listing.Length == 0)
@@ -44,8 +42,8 @@ public static class TailorEndpoints
                     $"That job listing is {listing.Length:n0} characters; the limit is {MaxJobListingLength:n0}.",
                     statusCode: StatusCodes.Status400BadRequest);
 
-            var cv = await db.LoadFull(id);
-            if (cv is null) return Results.NotFound();
+            if (!CvSaveFiles.TryToEntity(req.Cv, out var cv, out var problem))
+                return Results.Problem(problem, statusCode: StatusCodes.Status400BadRequest);
 
             try
             {
@@ -61,25 +59,25 @@ public static class TailorEndpoints
             }
         });
 
-        // Applies a recommendation the user has seen. Takes the lists rather than the
-        // plan, so the server recomputes against current data before writing.
-        api.MapPost("/cvs/{id:guid}/tailor/apply", async (
-            Guid id, TailoringRecommendation recommendation, CvDbContext db) =>
+        // Applies a recommendation the user has seen and returns the amended CV for the
+        // editor to adopt. Takes the lists rather than the plan, so the decisions are
+        // recomputed here rather than trusted from the client.
+        api.MapPost("/tailor/apply", (ApplyRequest req) =>
         {
-            var cv = await db.LoadFull(id);
-            if (cv is null) return Results.NotFound();
+            if (!CvSaveFiles.TryToEntity(req.Cv, out var cv, out var problem))
+                return Results.Problem(problem, statusCode: StatusCodes.Status400BadRequest);
+            if (req.Recommendation is null)
+                return Results.Problem("No recommendation to apply.", statusCode: StatusCodes.Status400BadRequest);
 
-            var plan = CvTailoring.Apply(cv, recommendation);
-            cv.UpdatedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync();
-
-            return Results.Ok(new { plan, cv = Mapper.ToDto(cv) });
+            var plan = CvTailoring.Apply(cv, req.Recommendation);
+            return Results.Json(
+                new ApplyResponse(plan, CvSaveFiles.ToSaveFile(cv)), SaveFileJson.Options);
         });
     }
 
     /// <summary>
     /// The listing followed by the CV as a save file — the same JSON the user can
-    /// download, so the ids the model replies with are ids they can see for themselves.
+    /// download, so the ids the model replies with are ids they could see for themselves.
     /// </summary>
     private static string BuildMessage(string listing, Domain.Cv cv)
     {

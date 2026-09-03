@@ -162,17 +162,17 @@ public static class CvTailoring
         var nodes = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
         var order = 0;
 
-        foreach (var section in cv.Sections.OrderBy(s => s.SortOrder))
+        foreach (var section in cv.Sections)
         {
             Add(new Node(section.Ref, "section", Label(section.Title, "untitled section"),
                 () => section.Included, v => section.Included = v, null, order++));
 
-            foreach (var item in section.Items.OrderBy(i => i.SortOrder))
+            foreach (var item in section.Items)
             {
                 Add(new Node(item.Ref, "entry", EntryLabel(item),
                     () => item.Included, v => item.Included = v, section.Ref, order++));
 
-                foreach (var bullet in item.Bullets.OrderBy(b => b.SortOrder))
+                foreach (var bullet in item.Bullets)
                     Add(new Node(bullet.Ref, "bullet", Label(bullet.Text, "empty line"),
                         () => bullet.Included, v => bullet.Included = v, item.Ref, order++));
             }

@@ -1,9 +1,6 @@
 using System.Text.Json.Serialization;
 using CvBuilder.Api.Ai;
 using CvBuilder.Api.Api;
-using CvBuilder.Api.Data;
-using CvBuilder.Api.Domain;
-using Microsoft.EntityFrameworkCore;
 using QuestPDF.Infrastructure;
 
 // QuestPDF is free under the Community licence for individuals and small companies.
@@ -11,11 +8,8 @@ QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? throw new InvalidOperationException(
-        "No connection string. Set ConnectionStrings__Default (see docker-compose.yml).");
-
-builder.Services.AddDbContext<CvDbContext>(o => o.UseNpgsql(connectionString));
+// No database, no session, no cache: the browser holds the CV and posts it with each
+// request. That keeps hosting to a single stateless container.
 
 // The DeepSeek key stays server-side. Set it with DeepSeek__ApiKey; the app runs
 // fine without one, and the tailoring endpoint says so if it is missing.
@@ -25,7 +19,7 @@ builder.Services.AddHttpClient<DeepSeekClient>(c => c.Timeout = TimeSpan.FromSec
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
-    // SectionKind travels as "Timeline"/"Grouped"/"Bullets" rather than 0/1/2.
+    // SectionKind travels as "Timeline"/"Grouped"/… rather than 0/1/2.
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
@@ -39,23 +33,6 @@ builder.Services.AddCors(o => o.AddPolicy(DevCors, p => p
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<CvDbContext>();
-    db.Database.Migrate();
-
-    // First run on a fresh database gets one CV so the editor has something to open.
-    if (!await db.Cvs.AnyAsync())
-    {
-        var starter = Templates.NewStarterCv();
-        CvRefs.EnsureAll(starter);
-        db.Cvs.Add(starter);
-        await db.SaveChangesAsync();
-    }
-
-    await BackfillRefs(db);
-}
-
 if (app.Environment.IsDevelopment()) app.UseCors(DevCors);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
@@ -63,25 +40,3 @@ app.MapCvEndpoints();
 app.MapTailorEndpoints();
 
 app.Run();
-
-/// <summary>
-/// Gives refs to rows created before refs existed. Cheap to run and idempotent:
-/// once every row has one, it finds nothing and does nothing.
-/// </summary>
-static async Task BackfillRefs(CvDbContext db)
-{
-    var needsRefs = await db.Cvs
-        .Where(c => c.Sections.Any(s => s.Ref == ""
-            || s.Items.Any(i => i.Ref == "" || i.Bullets.Any(b => b.Ref == ""))))
-        .Select(c => c.Id)
-        .ToListAsync();
-
-    foreach (var id in needsRefs)
-    {
-        var cv = await db.LoadFull(id);
-        if (cv is null) continue;
-        CvRefs.EnsureAll(cv);
-    }
-
-    if (needsRefs.Count > 0) await db.SaveChangesAsync();
-}

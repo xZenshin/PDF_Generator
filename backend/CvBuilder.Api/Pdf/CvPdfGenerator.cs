@@ -232,20 +232,15 @@ public static class CvPdfGenerator
 
     /// <summary>Included sections that still have something to print once filtering is applied.</summary>
     private static List<Section> VisibleSections(Cv cv) => cv.Sections
-        .Where(s => s.Included)
-        .OrderBy(s => s.SortOrder)
-        .Where(s => VisibleItems(s).Count > 0)
+        .Where(s => s.Included && VisibleItems(s).Count > 0)
         .ToList();
 
     private static List<CvItem> VisibleItems(Section section) => section.Items
-        .Where(i => i.Included)
-        .OrderBy(i => i.SortOrder)
-        .Where(i => HasContent(section, i))
+        .Where(i => i.Included && HasContent(section, i))
         .ToList();
 
     private static List<Bullet> VisibleBullets(CvItem item) => item.Bullets
         .Where(b => b.Included && !string.IsNullOrWhiteSpace(b.Text))
-        .OrderBy(b => b.SortOrder)
         .ToList();
 
     private static bool HasContent(Section section, CvItem item) => section.Kind switch

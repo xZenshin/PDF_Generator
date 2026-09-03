@@ -49,7 +49,7 @@ public static class CvRefs
             .Select(s => s.Ref)
             .ToList();
 
-        foreach (var section in cv.Sections.OrderBy(s => s.SortOrder))
+        foreach (var section in cv.Sections)
         {
             if (string.IsNullOrWhiteSpace(section.Ref))
             {
@@ -68,7 +68,7 @@ public static class CvRefs
                 .Select(b => b.Ref)
                 .ToList();
 
-            foreach (var item in section.Items.OrderBy(i => i.SortOrder))
+            foreach (var item in section.Items)
             {
                 if (string.IsNullOrWhiteSpace(item.Ref))
                 {
@@ -76,7 +76,7 @@ public static class CvRefs
                     takenItemRefs.Add(item.Ref);
                 }
 
-                foreach (var bullet in item.Bullets.OrderBy(b => b.SortOrder))
+                foreach (var bullet in item.Bullets)
                 {
                     if (!string.IsNullOrWhiteSpace(bullet.Ref)) continue;
                     bullet.Ref = BulletRef(section.Ref, takenBulletRefs);

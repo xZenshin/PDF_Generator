@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { AiStatus, PlannedChange, TailorResponse } from '../types'
+import { toEditable } from '../cvFile'
+import type { AiStatus, Cv, PlannedChange, TailorResponse } from '../types'
 
 interface TailorDialogProps {
-  cvId: string
-  cvName: string
+  cv: Cv
   onClose: () => void
-  /** Called after changes land, so the editor and preview reload from the server. */
-  onApplied: (summary: string) => void
+  /** Hands back the amended CV for the editor to adopt. */
+  onApplied: (cv: Cv, summary: string) => void
 }
 
 /**
  * The tailoring loop: paste a listing, ask DeepSeek which parts of the CV fit it,
  * read what that would change, then apply. Nothing is written until Apply is clicked.
  */
-export function TailorDialog({ cvId, cvName, onClose, onApplied }: TailorDialogProps) {
+export function TailorDialog({ cv, onClose, onApplied }: TailorDialogProps) {
   const [status, setStatus] = useState<AiStatus | null>(null)
   const [jobListing, setJobListing] = useState('')
   const [result, setResult] = useState<TailorResponse | null>(null)
@@ -39,7 +39,7 @@ export function TailorDialog({ cvId, cvName, onClose, onApplied }: TailorDialogP
     setError(null)
     setResult(null)
     try {
-      setResult(await api.tailor(cvId, jobListing))
+      setResult(await api.tailor(cv, jobListing))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -52,10 +52,14 @@ export function TailorDialog({ cvId, cvName, onClose, onApplied }: TailorDialogP
     setApplying(true)
     setError(null)
     try {
-      const { plan } = await api.applyTailoring(cvId, result.recommendation)
+      const { plan, cv: amended } = await api.applyTailoring(cv, result.recommendation)
       const included = plan.changes.filter((c) => c.include).length
       const excluded = plan.changes.length - included
-      onApplied(`Tailored ${cvName}: ${included} included, ${excluded} excluded.`)
+      onApplied(
+        toEditable(amended),
+        `Tailored ${cv.name}: ${included} included, ${excluded} excluded. ` +
+          'Save to file to keep the result.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setApplying(false)
