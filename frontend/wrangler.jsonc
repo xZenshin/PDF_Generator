@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cv-builder",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-03",
+
+  // The built SPA. `single-page-application` sends unknown paths to index.html, and
+  // `run_worker_first` keeps /api/* away from that rule so it can be proxied instead.
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "observability": { "enabled": true }
+
+  // API_ORIGIN is deliberately not declared here: it is a secret, set with
+  // `npx wrangler secret put API_ORIGIN` or in the dashboard, so a deploy never
+  // overwrites it and the backend's hostname stays out of the repository.
+}
